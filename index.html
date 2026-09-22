@@ -1032,14 +1032,20 @@ const TECHNIQUES = {
            (~100 cm, elbow bent) and brought in over the ski (plantIn 40) —
            a low, extended arm put the tip 80+ cm away by geometry (110 cm
            pole). Pole is now 110 cm, the user's sizing. */
-        plantElbow:-0.75, plantDown:-30, plantSink:35, plantIn:28, plantOut:0.60, plantFwd:0.80, plantCos:0.98,
+        /* Matched to a reference clip (keita_n05, Treble Cone): at the plant
+           the hand is LOW and in front of the chest (75 cm above the snow,
+           54 cm ahead of the boot, only 8 cm outside it) with the elbow bent,
+           and the shaft runs forward-down to a tip beside the ski tip. Our
+           older pose reached the hand up to 92 cm and put the tip 49 cm out
+           to the side, which read as a stab rather than a plant. */
+        plantElbow:-0.75, plantDown:10, plantSink:35, plantIn:40, plantOut:0.15, plantFwd:0.99, plantCos:0.98,
         plantHold:0.30, plantFade:0.03, plantDrop:0.30, plantReach:0.07,
         /* steer 12 read as the skis drifting ('飄移') — removed; flatter
            skis come from the lower inclination alone. */
         maxLean:34, speed:5.5, steer:0, legSplit:0.02, legLong:0.66, legShort:0.56, releaseFore:0.07, poleBack:60 },
     drills:[
       {name:'點杖節奏 Pole-plant rhythm', aim:'每個彎換刃嗰一刻點一下,建立節奏。',
-       cues:['舊外手彎中段開始向前,唔係彎尾先揮','點杖 = 起動點:仗一掂雪嗰刻人就撐起 —— 同一下,唔係點完先起','隻手向前伸嗰陣個身要跟住去,唔係淨係郁隻手','企高嗰下靠前,板先貼到雪面;之後慢慢施壓入新彎','兩隻腳一齊壓、一齊伸,比例一樣','立刃少啲,板放平啲','手腕拗,膊頭唔郁','點完隻手慢慢向後擺;另一隻手同時慢慢拎上前,準備下一次點杖','另一隻手留喺前面'],
+       cues:['舊外手彎中段開始向前,唔係彎尾先揮','點杖 = 起動點:仗一掂雪嗰刻人就撐起 —— 同一下,唔係點完先起','點嗰陣身體仲係低住,隻手低、喺胸前、手肘屈;唔係舉高隻手','隻手向前伸嗰陣個身要跟住去,唔係淨係郁隻手','企高嗰下靠前,板先貼到雪面;之後慢慢施壓入新彎','兩隻腳一齊壓、一齊伸,比例一樣','立刃少啲,板放平啲','手腕拗,膊頭唔郁','點完隻手慢慢向後擺;另一隻手同時慢慢拎上前,準備下一次點杖','另一隻手留喺前面'],
        faults:['點喺彎外側','太早點 —— 內板撞到支仗','成隻手臂揮落去,上身跟住扭','點完手臂縮後,身體轉','另一隻手跌咗落後面']}
     ]
   },
