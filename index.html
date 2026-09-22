@@ -19,7 +19,7 @@
     font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","Microsoft JhengHei",sans-serif;
     background:#0b1420;color:var(--text);}
   #canvas-container{position:absolute;inset:0;}
-  canvas{display:block;}
+  canvas{display:block;touch-action:none;}
 
   .panel{
     position:absolute;background:var(--panel-bg);border:1px solid var(--panel-border);
@@ -162,6 +162,49 @@
     #sidebar{width:232px;}
     #legend{display:none;}
   }
+
+  /* ---- Phone: the 3D view is the page. Panels become a bottom sheet, the
+         view buttons a scrolling row of chips at the top, and a floating
+         button hides everything for a clean full-screen look. ---- */
+  #btnPanels{
+    display:none;position:absolute;top:58px;right:8px;z-index:60;
+    width:42px;height:42px;border-radius:50%;align-items:center;justify-content:center;
+    background:var(--panel-bg);border:1px solid var(--panel-border);color:var(--text);
+    font-size:17px;backdrop-filter:blur(6px);box-shadow:0 4px 14px rgba(0,0,0,.4);
+  }
+  @media (max-width: 820px){
+    #btnPanels{display:flex;}
+    #views{
+      top:8px;left:8px;right:8px;width:auto;
+      flex-direction:row;overflow-x:auto;gap:6px;padding:8px;
+      -webkit-overflow-scrolling:touch;
+    }
+    #views h3,#viewHint{display:none;}
+    #views button{white-space:nowrap;flex:0 0 auto;padding:9px 11px;font-size:12.5px;}
+    #sidebar{
+      top:auto;bottom:calc(98px + env(safe-area-inset-bottom));left:0;right:0;width:auto;
+      max-height:44vh;padding:10px 10px 12px;gap:8px;
+      background:rgba(10,18,28,0.93);border-top:1px solid var(--panel-border);
+      backdrop-filter:blur(8px);-webkit-overflow-scrolling:touch;
+    }
+    #sidebar .panel{border-radius:10px;padding:11px 12px;}
+    #sidebar select{font-size:15px;padding:9px 10px;}   /* no iOS zoom-on-focus */
+    .card > .cardHead{font-size:13.5px;padding:2px 0;}
+    #controls{
+      left:0;right:0;bottom:0;width:auto;transform:none;border-radius:0;
+      border-left:0;border-right:0;border-bottom:0;
+      padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+      gap:8px;flex-wrap:wrap;justify-content:center;
+    }
+    #controls .sep{display:none;}
+    #controls button{padding:9px 12px;font-size:13px;}
+    #timeline{flex:1 1 100%;order:-1;height:30px;}
+    #speedSel{font-size:15px;padding:7px 8px;}
+    #comparePanel{top:58px;left:8px;right:8px;width:auto;max-height:60vh;overflow-y:auto;}
+    body.panels-hidden #sidebar,
+    body.panels-hidden #views,
+    body.panels-hidden #comparePanel{display:none;}
+  }
 </style>
 </head>
 <body>
@@ -170,6 +213,7 @@
 <video id="overlayVideo" muted playsinline></video>
 
 <div id="toast"></div>
+<button id="btnPanels" title="收起 / 展開面板">☰</button>
 
 <!-- ===== Left sidebar: one scrollable column of collapsible cards ===== -->
 <div id="sidebar">
@@ -313,6 +357,7 @@ window.addEventListener('resize', ()=>{
   camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if(typeof measureUiCover === 'function') measureUiCover();
 });
 
 /* Lights */
@@ -975,7 +1020,7 @@ const TECHNIQUES = {
        (the stab is the trigger). Tip 81 cm ahead of the boot, 7 cm outside
        the inside ski's edge, hand 97 cm up. Once planted the tip is PINNED
        in the snow and the skier passes it. */
-    P:{ polePlant:1, plantStart:0.60, plantRelease:0.65, plantSweep:0.0, plantSwing:8, handOpen:3, stabRelease:1,
+    P:{ polePlant:1, plantStart:0.45, plantRelease:0.65, plantSweep:0.60, plantSwing:18, handOpen:3, stabRelease:1,
         /* The stab: the arm straightens DOWN onto the pole over the plant
            window (elbow 62 -> ~0 deg, hand 39 -> 45 cm below the shoulder,
            held ahead of the shoulder). plantDown is negative because the
@@ -987,10 +1032,11 @@ const TECHNIQUES = {
            (~100 cm, elbow bent) and brought in over the ski (plantIn 40) —
            a low, extended arm put the tip 80+ cm away by geometry (110 cm
            pole). Pole is now 110 cm, the user's sizing. */
-        plantElbow:-0.75, plantDown:-30, plantIn:28, plantOut:0.60, plantFwd:0.80, plantCos:0.98,
+        plantElbow:-0.75, plantDown:-30, plantSink:35, plantIn:28, plantOut:0.60, plantFwd:0.80, plantCos:0.98,
+        plantHold:0.30, plantFade:0.03, plantDrop:0.30, plantReach:0.07,
         /* steer 12 read as the skis drifting ('飄移') — removed; flatter
            skis come from the lower inclination alone. */
-        maxLean:34, speed:7.0, steer:0, legSplit:0.02, legLong:0.66, legShort:0.56, releaseFore:0.07, poleBack:60 },
+        maxLean:34, speed:5.5, steer:0, legSplit:0.02, legLong:0.66, legShort:0.56, releaseFore:0.07, poleBack:60 },
     drills:[
       {name:'點杖節奏 Pole-plant rhythm', aim:'每個彎換刃嗰一刻點一下,建立節奏。',
        cues:['舊外手彎中段開始向前,唔係彎尾先揮','點杖 = 起動點:仗一點落雪,人先開始撐起、靠向板頭,順勢轉重心','企高嗰下靠前,板先貼到雪面;之後慢慢施壓入新彎','兩隻腳一齊壓、一齊伸,比例一樣','立刃少啲,板放平啲','手腕拗,膊頭唔郁','點完隻手慢慢向後擺;另一隻手同時慢慢拎上前,準備下一次點杖','另一隻手留喺前面'],
@@ -1966,7 +2012,29 @@ function updateCamera(skierPos, skierQuat, dt){
 
   camSnap = false;
   camera.position.copy(camTmpPos);
+  /* On a phone the bottom sheet covers the lower part of the screen, so a
+     skier framed in the middle of the WINDOW sits behind it. Aim a little
+     below them by the same fraction, which lifts them into the visible strip.
+     0 on a desktop, where nothing covers the canvas. */
+  if(uiCover > 0){
+    const halfWorld = camTmpPos.distanceTo(camTmpTarget) * Math.tan(THREE.MathUtils.degToRad(camera.fov)/2);
+    camTmpTarget.y -= halfWorld * uiCover;
+  }
   camera.lookAt(camTmpTarget);
+}
+
+/* Fraction of the window height hidden behind the phone UI (0 on desktop). */
+let uiCover = 0;
+function measureUiCover(){
+  const mobile = window.innerWidth <= 820 && !document.body.classList.contains('panels-hidden');
+  if(!mobile){ uiCover = 0; return; }
+  const tops = ['sidebar','controls'].map(id => {
+    const el = document.getElementById(id);
+    if(!el || getComputedStyle(el).display === 'none') return window.innerHeight;
+    return el.getBoundingClientRect().top;
+  });
+  const covered = window.innerHeight - Math.min(...tops);
+  uiCover = THREE.MathUtils.clamp(covered / window.innerHeight, 0, 0.6);
 }
 
 document.querySelectorAll('#views button').forEach(btn=>{
@@ -1988,7 +2056,19 @@ document.querySelectorAll('#views button').forEach(btn=>{
 
   el.addEventListener('contextmenu', e => e.preventDefault());
 
+  /* Two-finger gestures for touch: a phone has no wheel, so pinch = zoom and
+     a two-finger drag = pan, matching what the mouse does with shift/right. */
+  const touches = new Map();
+  let pinchDist = 0, pinchMid = null;
+  const midOf = () => { const [a,b] = [...touches.values()];
+    return {x:(a.x+b.x)/2, y:(a.y+b.y)/2, d:Math.hypot(a.x-b.x, a.y-b.y)}; };
+
   el.addEventListener('pointerdown', e => {
+    if(e.pointerType !== 'mouse'){
+      touches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(touches.size === 2){ const m = midOf(); pinchDist = m.d; pinchMid = m; dragging = null; return; }
+      if(touches.size > 2) return;
+    }
     dragging = (e.button === 2 || e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
     lastX = e.clientX; lastY = e.clientY;
     el.setPointerCapture(e.pointerId);
@@ -1996,6 +2076,23 @@ document.querySelectorAll('#views button').forEach(btn=>{
   });
 
   el.addEventListener('pointermove', e => {
+    if(e.pointerType !== 'mouse' && touches.has(e.pointerId)){
+      touches.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(touches.size === 2){
+        const m = midOf(), v = viewState[viewMode];
+        if(pinchDist > 0){
+          v.dist = THREE.MathUtils.clamp(v.dist * (pinchDist / Math.max(1, m.d)), 1.6, 140);
+          camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+          const k = v.dist * 0.0016;
+          panDelta.copy(camRight).multiplyScalar(-(m.x - pinchMid.x)*k)
+                  .addScaledVector(camUp, (m.y - pinchMid.y)*k);
+          if(v.headingLocked) panDelta.applyQuaternion(_camYaw.clone().invert());
+          v.pan.add(panDelta);
+        }
+        pinchDist = m.d; pinchMid = m; camSnap = true;
+        return;
+      }
+    }
     if(!dragging) return;
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
@@ -2019,6 +2116,7 @@ document.querySelectorAll('#views button').forEach(btn=>{
   });
 
   function endDrag(e){
+    if(e && e.pointerId !== undefined){ touches.delete(e.pointerId); if(touches.size < 2) pinchDist = 0; }
     if(!dragging) return;
     dragging = null;
     el.style.cursor = 'grab';
@@ -2174,6 +2272,7 @@ const POLE_AXIS = new THREE.Vector3(0,-1,0);
    cancelling whatever rotations the arm chain above it has accumulated. */
 const POLE_TIP = POLE_LEN - 0.10;   // wrist -> tip along the shaft
 let P_poleBack = 0, P_plantOut = 0.72, P_plantFwd = 0.694, P_plantCos = 0.90;
+let P_plantHold = 0.16, P_plantSlip = 0.34, P_plantFade = 0.06;
 /* A planted tip is PINNED in the snow: once it touches, it stays at that world
    point and the shaft is aimed from the moving hand to it — the skier passes
    the pole. Re-aiming from the hand every frame instead dragged the tip 50 cm
@@ -2217,7 +2316,12 @@ function aimPole(pole, sideSign, plant, azi, pinKey){
     _v4.set(sideSign*0.763*s0, -c0, -0.646*s0);                 // out:back = 0.65:0.55 normalised — past the ski tail
   }
   _v8.copy(_v4);                                   // the carried (rest) direction, kept for the pin blend
-  const k = Math.max(azi, plant);
+  /* Once the tip has left the snow the pole goes back to being CARRIED — it
+     must not hold the planted pose while the skier drags it along in front.
+     That hand-off rides the same `hold` that releases the pin, so the pose and
+     the tip fade together; switching it on a flag jumped the tip 52 cm. */
+  const holdFactor = (pinKey && polePin[pinKey + 'w'] !== undefined) ? polePin[pinKey + 'w'] : 1;
+  const k = Math.max(azi, plant) * holdFactor;
   if(k > 0){
     /* planted: tip ON the snow, shaft as upright as plantCos allows; if the
        hand is low the shaft leans forward instead of the tip going under. */
@@ -2240,36 +2344,45 @@ function aimPole(pole, sideSign, plant, azi, pinKey){
     const wristW = _v6; pole.parent.getWorldPosition(wristW);
     let pin = polePin[pinKey];
     if(pin && plant <= 0.02) { polePin[pinKey] = pin = null; }      // release complete: free for the next plant
-    if(!pin && plant > 0.98 && P_psiOut && !polePin[pinKey + 'done']){
-      /* touch: pin the tip where the blended shaft puts it, on the snow.
-         Once per plant — after the hand has passed, the shaft keeps pointing
-         at the plant point (trailing) until the release ramp lets it go. */
+    /* Pin the tip at the moment the swinging shaft actually REACHES the snow,
+       not at a fixed phase: pinning at a phase moved the tip from wherever it
+       was to the plant spot in one frame. */
+    const tipNowY = _v3.y + _v4.y * POLE_TIP;
+    if(!pin && P_psiOut && plant > 0.25 && tipNowY <= 0.02 && !polePin[pinKey + 'done']){
       const tipW = _v7.copy(_v4).multiplyScalar(POLE_TIP).applyQuaternion(skier.quaternion).add(wristW);
       skier.worldToLocal(tipW); tipW.y = 0; skier.localToWorld(tipW);
       polePin[pinKey] = pin = tipW.clone();
+      polePin[pinKey + 'w'] = 1;
       polePin[pinKey + 'done'] = true;
     }
-    if(plant <= 0.02) polePin[pinKey + 'done'] = false;
+    if(plant <= 0.02){ polePin[pinKey] = null; polePin[pinKey + 'done'] = false; polePin[pinKey + 'w'] = undefined; }
     if(pin){
-      const w = P_psiOut ? 1 : plant;                    // planted; then letting go toward the carried shaft
-      /* The hand cannot stay one pole-length from a fixed point. Within
-         ~10 cm the grip slides in the hand; as the hand moves further off
-         (10 -> 40 cm) the tip is pulled out and the shaft eases smoothly from
-         'pointing at the spot' to the carried carry. A hard cut-off here
-         jumped the tip 25 cm in one frame. */
+      /* How strongly the pole is still planted, 0..1. While the hand is within
+         reach of the plant point it is 1; once the skier has gone past, it
+         decays over about a quarter second. Fading on DISTANCE instead ran at
+         the skier's 6 m/s — the whole hand-off happened inside three frames
+         and the tip teleported ~1.5 m. */
       const d = wristW.distanceTo(pin) - POLE_TIP;
-      const f = (() => { const x = THREE.MathUtils.clamp((Math.abs(d) - 0.10) / 0.30, 0, 1); return x*x*x*(x*(x*6 - 15) + 10); })();
-      const toPin = _v7.copy(pin).sub(wristW).applyQuaternion(_q2.copy(skier.quaternion).invert()).normalize();
-      const wp = w * (1 - f);
-      slide = d * wp;
-      _v4.copy(_v8).lerp(toPin, wp).normalize();     // between the carried carry and the planted spot
-      /* never below the snow with the slid shaft length */
-      const cc = Math.max(0, _v3.y) / (POLE_TIP + slide);
-      if(-_v4.y > cc){
-        const h = Math.sqrt(Math.max(1e-6, 1 - cc*cc)) / Math.max(1e-6, Math.hypot(_v4.x, _v4.z));
-        _v4.set(_v4.x*h, -cc, _v4.z*h);
+      let hold = polePin[pinKey + 'w'];
+      if(hold === undefined) hold = 1;
+      hold = Math.abs(d) <= P_plantHold ? 1 : Math.max(0, hold - P_plantFade);
+      polePin[pinKey + 'w'] = hold;
+      if(hold <= 0){ /* faded out; the pin is dropped when the phase resets */ }
+      else {
+        const w = (P_psiOut ? 1 : plant) * hold;
+        /* The grip slides in the hand — real poles pivot and slip — but only
+           as far as plantHold, so the shaft is never stretched. */
+        slide = THREE.MathUtils.clamp(d, -P_plantHold, P_plantHold) * w;
+        const toPin = _v7.copy(pin).sub(wristW).applyQuaternion(_q2.copy(skier.quaternion).invert()).normalize();
+        _v4.lerp(toPin, w).normalize();
       }
     }
+  }
+  /* Final guard: with the grip slid out the shaft is longer, so re-check that
+     the tip is not under the snow. */
+  if(_v4.y < 0){
+    const maxLen = _v3.y / -_v4.y;
+    if(POLE_TIP + slide > maxLen) slide = Math.max(-POLE_TIP*0.5, maxLen - POLE_TIP);
   }
   _v3.copy(_v4);
   _v3.applyQuaternion(skier.quaternion);           // -> world
@@ -2365,14 +2478,23 @@ function updateSkierPose(progress /*0..1 along path*/){
   const psiOut   = Math.abs(psiShape(u + 0.02, P.turnSkew)) > Math.abs(psiShape(u, P.turnSkew));
   const _s5 = x => { x = THREE.MathUtils.clamp(x, 0, 1); return x*x*x*(x*(x*6 - 15) + 10); };
   const stabRaw  = psiOut ? _s5((psiN - P.plantStart) / (1 - P.plantStart)) : 1;   // the stab, 0 -> 1 as the old turn ends
-  /* Two halves of the stab: FIRST the tip goes down (stabTip, first half),
-     THEN the body rises off it (stabOut, second half). Touch, then up. */
-  const stabTip  = _s5(stabRaw / 0.5);
-  const stabOut  = _s5((stabRaw - 0.5) / 0.5);
+  /* The stab and the rise are ONE move: the tip goes down over the first
+     third of the ramp, and the body is already coming up off it — touch and
+     lift are simultaneous, not tip-then-lift. (An earlier split into two
+     halves read as 'plant, pause, stand'.) */
+  const stabTip  = _s5(stabRaw / (P.plantDrop || 0.20));
+  const stabOut  = _s5(stabRaw);
   const plantAmt = P.polePlant * (psiOut ? stabTip
                                          : _s5((psiN - P.plantRelease) / (1 - P.plantRelease)));
   const plantL = psi > 0 ? plantAmt : 0;
   const plantR = psi > 0 ? 0 : plantAmt;
+  /* How far the body has risen off the plant. After the edge change it decays
+     with plantAmt rather than switching off — a hard switch lifted the hand
+     19 cm in one frame and plucked the tip out of the snow. */
+  const sinkAmt = psiOut ? stabOut : plantAmt;
+  const plantReachAmt = P.polePlant > 0 ? Math.max(stabTip, sinkAmt) : 0;
+  const sinkL = psi > 0 ? sinkAmt : 0;
+  const sinkR = psi > 0 ? 0 : sinkAmt;
   /* The slow swing: psi/psiMax runs -1..+1 over the two turns of a cycle and
      peaks exactly where each hand plants, so it IS the hand's fore/aft phase.
      +1 = the LEFT hand at its plant (skis pointing right, left turn next),
@@ -2485,7 +2607,11 @@ function updateSkierPose(progress /*0..1 along path*/){
   /* releaseFore: as the body stands up at the change it moves toward the
      FRONT of the skis, so the skis lie to the slope and can be pressured
      into the new turn; the flex-down that follows brings it back to centre. */
-  const hipFore = P.hipForeBias + P.hipFore * foreAftN + P.hipDrive * commit + (P.releaseFore || 0) * (1 - flexK);   // + = hips ahead of the boots
+  /* plantReach: the reach for the plant is not just the arm — the BODY goes
+     with it, moving toward the ski tips as the hand swings forward. */
+  const hipFore = P.hipForeBias + P.hipFore * foreAftN + P.hipDrive * commit
+                + (P.releaseFore || 0) * (1 - flexK)
+                + (P.plantReach || 0) * plantReachAmt;   // + = hips ahead of the boots
 
   /* The split is scaled by `commit`, which is 0 at the edge change. That is what
      lets the two legs swap roles without a jump: at the moment the outside ski
@@ -2920,9 +3046,11 @@ function updateSkierPose(progress /*0..1 along path*/){
   /* plantDown: the STAB. Over the plant window the whole arm drives DOWN
      onto the pole (shoulder lowers, elbow extends) — the hand goes down, the
      body comes up over it, and the weight goes across with that push. */
-  const pdn = deg(P.plantDown || 0);
-  armR.shoulder.rotation.x = -armFwd - reach * reachK * (1 + bank) * 0.5 - ht - swing * swingR + pdn * plantR;
-  armL.shoulder.rotation.x = -armFwd - reach * reachK * (1 - bank) * 0.5 + ht - swing * swingL + pdn * plantL;
+  const pdn = deg(P.plantDown || 0), psk = deg(P.plantSink || 0);
+  /* plantSink: while the body rises off the planted pole the hand must NOT
+     ride up with it, or the tip is plucked out of the snow. */
+  armR.shoulder.rotation.x = -armFwd - reach * reachK * (1 + bank) * 0.5 - ht - swing * swingR + pdn * plantR + psk * sinkR;
+  armL.shoulder.rotation.x = -armFwd - reach * reachK * (1 - bank) * 0.5 + ht - swing * swingL + pdn * plantL + psk * sinkL;
   const fwdL = THREE.MathUtils.clamp(swingL, 0, 1), fwdR = THREE.MathUtils.clamp(swingR, 0, 1);
   const wide = deg(P.handWide);
   const pin = deg(P.plantIn || 0);                              // the planting arm comes IN toward the ski as it plants
@@ -2942,6 +3070,9 @@ function updateSkierPose(progress /*0..1 along path*/){
      axes, so a plain rotation.x would splay the poles out sideways. */
   P_poleBack = deg(P.poleBack);
   P_plantOut = P.plantOut; P_plantFwd = P.plantFwd; P_plantCos = P.plantCos;
+  P_plantHold = P.plantHold === undefined ? 0.16 : P.plantHold;
+  P_plantSlip = P.plantSlip === undefined ? 0.34 : P.plantSlip;
+  P_plantFade = P.plantFade === undefined ? 0.06 : P.plantFade;
   P_psiOut = psiOut;
   aimPole(armL.pole, +1, plantL, aziL, P.polePlant > 0 ? 'L' : null);
   aimPole(armR.pole, -1, plantR, aziR, P.polePlant > 0 ? 'R' : null);
@@ -3079,6 +3210,19 @@ function animate(){
   renderer.render(scene, camera);
 }
 requestAnimationFrame(animate);
+
+/* Phone: one button hides every panel so the whole screen is the demo. */
+const btnPanels = document.getElementById('btnPanels');
+btnPanels.addEventListener('click', () => {
+  const hidden = document.body.classList.toggle('panels-hidden');
+  btnPanels.textContent = hidden ? '\u2715' : '\u2630';
+  window.dispatchEvent(new Event('resize'));
+});
+measureUiCover();
+/* Cards open and close, which changes how much of the screen the sheet takes. */
+document.querySelectorAll('.card > .cardHead').forEach(h =>
+  h.addEventListener('click', () => setTimeout(measureUiCover, 0)));
+document.getElementById('sidebar').addEventListener('scroll', measureUiCover, {passive:true});
 /* Carving the tracks means posing the rig along the whole run, so it has to
    run after every const the pose function touches is initialised. */
 rebuildCarvedTracks();
