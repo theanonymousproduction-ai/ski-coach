@@ -1,0 +1,3195 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滑雪教練 3D 示範工具</title>
+<style>
+  :root{
+    --panel-bg: rgba(15,23,35,0.82);
+    --panel-border: rgba(255,255,255,0.12);
+    --accent: #4fb0ff;
+    --red: #ff4d4f;
+    --green: #3ddc84;
+    --text: #eef3f8;
+    --muted: #9fb0c0;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang HK","Microsoft JhengHei",sans-serif;
+    background:#0b1420;color:var(--text);}
+  #canvas-container{position:absolute;inset:0;}
+  canvas{display:block;}
+
+  .panel{
+    position:absolute;background:var(--panel-bg);border:1px solid var(--panel-border);
+    border-radius:12px;backdrop-filter:blur(6px);padding:12px 14px;
+    box-shadow:0 4px 20px rgba(0,0,0,0.35);
+  }
+
+  /* ---- Left sidebar: one column, so the cards can never overlap each other
+         or run off the bottom of a short window the way three independently
+         positioned panels did. ---- */
+  #sidebar{
+    position:absolute;top:14px;left:14px;width:264px;
+    max-height:calc(100vh - 92px);overflow-y:auto;overflow-x:hidden;
+    display:flex;flex-direction:column;gap:10px;padding-right:4px;
+  }
+  #sidebar .panel{position:static;width:100%;}
+
+  /* ---- Collapsible card ---- */
+  .card > .cardHead{
+    margin:0;font-size:12.5px;color:var(--accent);letter-spacing:.4px;
+    cursor:pointer;user-select:none;display:flex;align-items:center;
+    justify-content:space-between;gap:8px;line-height:1.45;
+  }
+  .card > .cardHead .chev{transition:transform .18s;font-size:11px;opacity:.8;flex:0 0 auto;}
+  .card.collapsed > .cardHead .chev{transform:rotate(-90deg);}
+  .card > .cardBody{margin-top:9px;}
+  .card.collapsed > .cardBody{display:none;}
+  .card.collapsed{padding-bottom:10px;}
+
+  #hud .gauge:first-child{margin-top:0;}
+  #hud h3{margin:0 0 8px;font-size:13px;color:var(--accent);letter-spacing:.5px;}
+  .gauge{margin-bottom:10px;}
+  .gauge-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;}
+  .gauge-track{position:relative;height:10px;background:rgba(255,255,255,0.08);border-radius:6px;overflow:hidden;}
+  .gauge-mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.35);}
+  .gauge-fill{position:absolute;top:0;bottom:0;width:0%;border-radius:6px;transition:width .05s linear,left .05s linear;}
+  #turnInfo{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6;}
+  #turnInfo b{color:var(--text);}
+  .sideTag{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;}
+  .sideTag.outside-red{background:var(--red);color:#fff;}
+  .sideTag.outside-green{background:var(--green);color:#08240f;}
+
+  /* Controls - bottom */
+  #controls{left:50%;bottom:14px;transform:translateX(-50%);display:flex;align-items:center;gap:10px;
+    max-width:94vw;overflow-x:auto;white-space:nowrap;}
+  #controls button{
+    background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:8px;padding:7px 10px;font-size:12px;cursor:pointer;transition:.15s;
+  }
+  #controls button:hover{background:rgba(79,176,255,0.25);}
+  #controls button.active{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:600;}
+  #controls .sep{width:1px;height:22px;background:var(--panel-border);}
+  #timeline{width:180px;accent-color:var(--accent);}
+  #speedSel{background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:8px;padding:6px 8px;font-size:12px;}
+  label.small{font-size:11px;color:var(--muted);}
+
+  /* View buttons - top right */
+  #views{top:14px;right:14px;display:flex;flex-direction:column;gap:6px;width:124px;}
+  #views button{
+    background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:8px;padding:7px 8px;font-size:12px;cursor:pointer;text-align:left;
+    white-space:nowrap;      /* two-line "跟隨視 角" was just the box being narrow */
+  }
+  #views button:hover{background:rgba(79,176,255,0.25);}
+  #views button.active{background:var(--accent);color:#04121f;font-weight:600;}
+  #views h3{margin:0 0 6px;font-size:12px;color:var(--accent);}
+  #viewHint{margin-top:8px;font-size:10.5px;line-height:1.6;color:var(--muted);
+    border-top:1px solid var(--panel-border);padding-top:7px;}
+
+  /* ---- Teaching controls ---- */
+  #tuneList .tune{margin-bottom:11px;}
+  #tuneList .tuneTop{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:11.5px;color:var(--text);margin-bottom:2px;gap:6px;}
+  #tuneList .tuneVal{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums;flex:0 0 auto;}
+  #tuneList input[type=range]{width:100%;accent-color:var(--accent);margin:1px 0 2px;height:16px;}
+  #tuneList .tuneHint{font-size:10.5px;line-height:1.5;color:var(--muted);}
+  #tuneOut{border-top:1px solid var(--panel-border);margin-top:4px;padding-top:8px;
+    font-size:11px;line-height:1.7;color:var(--muted);}
+  #tuneOut b{color:var(--text);font-variant-numeric:tabular-nums;}
+  #tuneOut .k{color:var(--accent);}
+  #btnTuneReset{width:100%;margin-top:9px;background:rgba(255,255,255,0.06);color:var(--text);
+    border:1px solid var(--panel-border);border-radius:8px;padding:6px 8px;font-size:11px;cursor:pointer;}
+  #btnTuneReset:hover{background:rgba(79,176,255,0.25);}
+
+  /* Technique + drill panel */
+  #techPanel select{width:100%;background:rgba(255,255,255,0.06);color:var(--text);
+    border:1px solid var(--panel-border);border-radius:8px;padding:6px 8px;font-size:12px;margin-bottom:8px;}
+  /* Capped so a long drill note cannot push the other two cards off screen. */
+  #techNote{font-size:11px;line-height:1.65;color:var(--muted);
+    border-top:1px solid var(--panel-border);padding-top:8px;margin-top:2px;
+    max-height:206px;overflow-y:auto;padding-right:4px;}
+  #techNote .cueHead{color:var(--accent);font-weight:600;display:block;margin:8px 0 3px;font-size:11px;}
+  #techNote .cueHead.warn{color:#ffb84f;}
+  #techNote ul{margin:0;padding-left:16px;}
+  #techNote li{margin-bottom:3px;}
+  #techNote .lead{color:var(--text);}
+
+  /* Legend */
+  #legend{bottom:14px;right:14px;font-size:11px;color:var(--muted);width:178px;}
+  #legend .row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+  #legend .dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;}
+  #legend .swatch{flex:0 0 auto;height:11px;border-radius:2px;}
+  #legend .swatch.carve{width:3px;background:#8fa6c4;box-shadow:0 0 0 1px rgba(255,255,255,.35);margin:0 4px;}
+  #legend .swatch.skid{width:11px;background:rgba(180,198,222,.55);}
+
+  /* Compare panel */
+  #comparePanel{top:14px;left:292px;width:340px;display:none;}
+  #comparePanel.show{display:block;}
+  #comparePanel h3{margin:0 0 8px;font-size:13px;color:var(--accent);}
+  #comparePanel video{width:100%;border-radius:8px;background:#000;max-height:220px;}
+  #comparePanel .row2{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap;}
+  #comparePanel input[type=range]{accent-color:var(--accent);}
+  #comparePanel button{background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--panel-border);
+    border-radius:6px;padding:5px 8px;font-size:11px;cursor:pointer;}
+  #comparePanel button:hover{background:rgba(79,176,255,0.25);}
+  #fileInput{display:none;}
+
+  #overlayVideo{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
+    pointer-events:none;opacity:0;transform:scaleX(1);z-index:5;
+  }
+
+  #toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    background:rgba(20,28,40,0.9);border:1px solid var(--panel-border);padding:8px 16px;border-radius:8px;
+    font-size:12px;color:var(--text);opacity:0;transition:opacity .3s;pointer-events:none;z-index:20;}
+  #toast.show{opacity:1;}
+
+  ::-webkit-scrollbar{height:6px;width:6px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:3px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* Short windows: the sidebar is already scrollable, but on a laptop in
+     landscape the view buttons and the legend would collide, so stack the
+     legend under the views instead of pinning it to the bottom. */
+  @media (max-height: 760px){
+    #legend{bottom:auto;top:310px;}
+  }
+  @media (max-width: 900px){
+    #sidebar{width:232px;}
+    #legend{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<video id="overlayVideo" muted playsinline></video>
+
+<div id="toast"></div>
+
+<!-- ===== Left sidebar: one scrollable column of collapsible cards ===== -->
+<div id="sidebar">
+
+<!-- Technique + drills -->
+<div class="panel card" id="techPanel">
+  <h3 class="cardHead">滑法 &amp; 練習 · TECHNIQUE<span class="chev">▾</span></h3>
+  <div class="cardBody">
+    <select id="techSel"></select>
+    <select id="drillSel"></select>
+    <div id="techNote"></div>
+  </div>
+</div>
+
+<!-- HUD -->
+<div class="panel card" id="hud">
+  <h3 class="cardHead">重心控制指標 · CENTER OF GRAVITY<span class="chev">▾</span></h3>
+  <div class="cardBody">
+  <div class="gauge">
+    <div class="gauge-label"><span>◀ 前 Fore</span><span>後 Aft ▶</span></div>
+    <div class="gauge-track"><div class="gauge-mid"></div><div class="gauge-fill" id="gaugeForeAft" style="background:var(--accent);"></div></div>
+  </div>
+  <div class="gauge">
+    <div class="gauge-label"><span>▲ 伸展 減壓</span><span>屈曲 施壓 ▼</span></div>
+    <div class="gauge-track"><div class="gauge-mid"></div><div class="gauge-fill" id="gaugeUpDown" style="background:#ffb84f;"></div></div>
+  </div>
+  <div class="gauge">
+    <div class="gauge-label"><span>內雪板 Inside</span><span>外雪板 Outside</span></div>
+    <div class="gauge-track"><div class="gauge-mid"></div><div class="gauge-fill" id="gaugeLeftRight" style="background:#c77dff;"></div></div>
+  </div>
+  <div id="turnInfo">
+    轉彎方向: <b id="turnSideLabel">-</b><br>
+    外側雪板 (承重): <span class="sideTag" id="outsideSkiTag">-</span><br>
+    實際承重比: <b id="loadReadout">-</b><br>
+    滑法: <b id="turnShapeLabel">平行式 封閉彎</b>
+  </div>
+  </div>
+</div>
+
+<!-- Teaching controls -->
+<div class="panel card collapsed" id="tunePanel">
+  <h3 class="cardHead">控制要素 · WHAT YOU CONTROL<span class="chev">▾</span></h3>
+  <div class="cardBody">
+    <div id="tuneList"></div>
+    <div id="tuneOut"></div>
+    <button id="btnTuneReset">↺ 還原呢個練習嘅設定</button>
+  </div>
+</div>
+
+</div><!-- /#sidebar -->
+
+<!-- Views -->
+<div class="panel" id="views">
+  <h3>多角度視野</h3>
+  <button data-view="follow" class="active">🎿 跟隨視角</button>
+  <button data-view="front">🙋 正面視角</button>
+  <button data-view="side">↔️ 側面視角</button>
+  <button data-view="top">⬇️ 俯瞰視角</button>
+  <button data-view="free">🖱️ 自由視角</button>
+  <div id="viewHint">
+    拖曳 = 轉鏡頭<br>
+    右鍵 / Shift 拖曳 = 平移<br>
+    滾輪 = 遠近 · 雙擊 = 重設<br>
+    <span style="opacity:.7;">每個視角各自記住你嘅調整</span>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="panel card collapsed" id="legend">
+  <h3 class="cardHead">雪道圖例<span class="chev">▾</span></h3>
+  <div class="cardBody">
+    <div class="row"><span class="swatch carve"></span>幼而深 = 立刃碳雕</div>
+    <div class="row"><span class="swatch skid"></span>闊而淺 = 板平側滑</div>
+    <div class="row"><span class="dot" style="background:#ffcf4f;"></span>COG 重心標記</div>
+    <div style="margin-top:7px;opacity:.75;line-height:1.55;">
+      痕跡深度 = 該板承重。<br>一邊變深、另一邊變淡嗰點,就係重心轉移。<br>
+      犁式:兩條痕向外分開,闊而淺。
+    </div>
+  </div>
+</div>
+
+<!-- Compare panel -->
+<div class="panel" id="comparePanel">
+  <h3>學員動作對比 · UPLOAD &amp; COMPARE</h3>
+  <video id="studentVideo" controls></video>
+  <div class="row2">
+    <button id="btnOverlay">疊加模式: 關</button>
+    <button id="btnMirror">鏡像: 關</button>
+    <button id="btnSyncPlay">同步播放</button>
+  </div>
+  <div class="row2">
+    <span>透明度</span>
+    <input type="range" id="overlayOpacity" min="0" max="100" value="55" style="flex:1;">
+  </div>
+</div>
+<input type="file" id="fileInput" accept="video/*">
+
+<!-- Controls -->
+<div class="panel" id="controls">
+  <button id="btnPlay">⏸ 暫停</button>
+  <input type="range" id="timeline" min="0" max="1000" value="0">
+  <span class="sep"></span>
+  <label class="small">速度</label>
+  <select id="speedSel">
+    <option value="0.25">0.25x</option>
+    <option value="0.5">0.5x</option>
+    <option value="1" selected>1x</option>
+    <option value="1.5">1.5x</option>
+    <option value="2">2x</option>
+  </select>
+  <span class="sep"></span>
+  <button id="btnUpload">📤 上載學員影片</button>
+  <button id="btnCompareToggle">🔀 顯示對比面板</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- OrbitControls is no longer needed: it orbits a fixed point, and every view
+     here orbits a moving skier, so the camera does its own drag handling. -->
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   BASIC SETUP
+============================================================ */
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+const skyColor = new THREE.Color(0xbfe3ff);
+scene.background = skyColor;
+scene.fog = new THREE.Fog(skyColor.getHex(), 40, 240);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 500);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* Lights */
+/* Snow lighting: shadows on snow are blue, not grey, because the only light
+   reaching them is the sky. And snow bounces most of the sun straight back up,
+   so the ground term of the hemisphere light has to be bright rather than dark. */
+/* Total light is kept near 1.0. Snow has a very high albedo, so any more and
+   it clips to flat white — which erases both the surface texture and the
+   shading that makes a ski track readable. */
+const hemi = new THREE.HemisphereLight(0xbfe0ff, 0xc8dcf0, 0.42);
+scene.add(hemi);
+const skyFill = new THREE.DirectionalLight(0x9ec6ef, 0.14);   // cool fill from the shaded side
+skyFill.position.set(-25, 18, -30);
+scene.add(skyFill);
+const sun = new THREE.DirectionalLight(0xfff6e8, 0.80);
+sun.position.set(30, 45, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 150;
+scene.add(sun);
+
+/* ============================================================
+   SLOPE GEOMETRY  (downhill = -Z, slope tilts down in -Z)
+============================================================ */
+const SLOPE_ANGLE = THREE.MathUtils.degToRad(17);
+const SLOPE_LENGTH = 400;  // along Z — ~9 turns of an 81 m cycle
+const SLOPE_WIDTH = 150;   // along X - a turn that finishes across the hill
+                           // sweeps a wide corridor, and the side edges must
+                           // never show up in the side / follow cameras
+const SLOPE_TOP_Z = 22;    // world z of the top edge, comfortably above START_Z
+
+function heightAt(z){ return -Math.tan(SLOPE_ANGLE) * (-z); } // z is negative downhill -> height decreases
+
+/* True surface normal of the ramp y = tan(a)*z. The skier is oriented against
+   THIS rather than world-up: a frame built from world-up has a horizontal X
+   axis, which does not lie in the slope plane once the skier is running across
+   the hill, and every "height above the snow" calculation drifts with it. */
+const SLOPE_NORMAL = new THREE.Vector3(0, Math.cos(SLOPE_ANGLE), -Math.sin(SLOPE_ANGLE)).normalize();
+
+/* The ski line is drawn slightly proud of the snow so the track tubes do not
+   z-fight with it. The skier rides that same line, so ground contact has to
+   subtract this back out or the skis hover by exactly this much. */
+const PATH_LIFT = 0.02;
+
+const SLOPE_Z_OFFSET = SLOPE_TOP_Z - SLOPE_LENGTH/2; // mesh local z=0 -> this world z
+const slopeGeo = new THREE.PlaneGeometry(SLOPE_WIDTH, SLOPE_LENGTH, 40, 126);
+slopeGeo.rotateX(-Math.PI/2);
+{
+  const pos = slopeGeo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i);
+    const zLocal = pos.getZ(i);
+    const worldZ = zLocal + SLOPE_Z_OFFSET; // must match world-space heightAt() used by the skier path
+    // Kept perfectly smooth: the ski tracks and the skier's ground contact are
+    // both solved from heightAt(), so any bump here would make them float/sink.
+    pos.setY(i, heightAt(worldZ));
+  }
+  slopeGeo.computeVertexNormals();
+}
+/* Procedural snow detail. Generated into a canvas rather than loaded, so the
+   page stays a single self-contained file. This is a BUMP map only — it never
+   touches the geometry, so the ground-contact solve stays exact. */
+function fbmCanvas(size, octaves, contrast){
+  const buf = new Float32Array(size*size);
+  let amp = 1, total = 0;
+  for(let o=0;o<octaves;o++){
+    const n = Math.max(2, 4 << o);                 // grid resolution per octave
+    const g = new Float32Array(n*n);
+    for(let i=0;i<n*n;i++) g[i] = Math.random();
+    for(let y=0;y<size;y++){
+      const fy=(y/size)*n, y0=Math.floor(fy)%n, y1=(y0+1)%n;
+      const ty=fy-Math.floor(fy), sy=ty*ty*(3-2*ty);
+      for(let x=0;x<size;x++){
+        const fx=(x/size)*n, x0=Math.floor(fx)%n, x1=(x0+1)%n;
+        const tx=fx-Math.floor(fx), sx=tx*tx*(3-2*tx);
+        const a=g[y0*n+x0], b=g[y0*n+x1], c=g[y1*n+x0], d=g[y1*n+x1];
+        const top=a+(b-a)*sx, bot=c+(d-c)*sx;
+        buf[y*size+x] += amp*(top+(bot-top)*sy);
+      }
+    }
+    total += amp; amp *= 0.55;
+  }
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(size, size);
+  for(let i=0;i<buf.length;i++){
+    let v = buf[i]/total;
+    v = 0.5 + (v-0.5)*contrast;
+    const px = Math.max(0, Math.min(255, Math.round(v*255)));
+    img.data[i*4] = img.data[i*4+1] = img.data[i*4+2] = px;
+    img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+/* Grain has to be FINE. Big lumps read as plaster, not snow — snow is smooth
+   at a distance with a fine sparkle up close, so the tile is about a metre
+   across and the relief is only a few centimetres. */
+const snowBump = fbmCanvas(256, 5, 0.8);
+snowBump.repeat.set(170, 210);
+snowBump.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const snowRough = fbmCanvas(128, 3, 0.45);       // patches of wind-packed vs loose
+snowRough.repeat.set(9, 12);
+snowRough.anisotropy = snowBump.anisotropy;
+
+/* ============================================================
+   MATERIAL DETAIL: woven fabric + a sky to reflect
+   Everything here is generated in code. A single self-contained HTML cannot
+   reference external image files, and embedding photographic maps as base64
+   would add megabytes, so the realism comes from procedural bump maps plus a
+   real reflection probe rather than from scanned textures.
+============================================================ */
+/* Twill weave: two offset diagonal rib families, used as a BUMP map only.
+   Ski clothing at this distance reads by its sheen breaking up, not by thread
+   colour, so a bump map buys almost all of the realism for none of the memory. */
+function fabricCanvas(size, pitch){
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#808080'; ctx.fillRect(0,0,size,size);
+  ctx.lineWidth = 1.4;
+  for(let i=-size; i<size*2; i+=pitch){
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i+size,size); ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.50)';
+    ctx.beginPath(); ctx.moveTo(i+pitch*0.45,0); ctx.lineTo(i+pitch*0.45+size,size); ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(7,7);
+  return t;
+}
+const fabricBump = fabricCanvas(128, 7);
+
+/* A sky to reflect. Without one, `metalness` renders almost black — a mirrored
+   goggle lens needs something to mirror. Deliberately applied per-material
+   instead of as scene.environment: lighting the whole scene from it would add
+   image-based light to the snow, and the snow albedo is already tuned right up
+   against the point where the track shading clips to flat white. */
+function skyEnvCanvas(){
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 128;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createLinearGradient(0,0,0,128);
+  g.addColorStop(0.00,'#5d9fe0');   // zenith
+  g.addColorStop(0.46,'#c8e0f6');
+  g.addColorStop(0.54,'#f2f7fc');   // horizon
+  g.addColorStop(1.00,'#ffffff');   // snow below
+  ctx.fillStyle = g; ctx.fillRect(0,0,256,128);
+  const sg = ctx.createRadialGradient(74,24,1,74,24,30);
+  sg.addColorStop(0,'#ffffff'); sg.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = sg; ctx.fillRect(0,0,256,128);
+  const t = new THREE.CanvasTexture(cv);
+  t.mapping = THREE.EquirectangularReflectionMapping;
+  return t;
+}
+const _pmrem = new THREE.PMREMGenerator(renderer);
+_pmrem.compileEquirectangularShader();
+const envTex = _pmrem.fromEquirectangular(skyEnvCanvas()).texture;
+
+/* Shared, cached materials. `capsulePart` used to mint a fresh material per
+   limb, so the fabric map could not be attached in one place. */
+const _matCache = {};
+function bodyMat(color, o){
+  o = o || {};
+  const rough = o.rough !== undefined ? o.rough : 0.72;
+  const metal = o.metal !== undefined ? o.metal : 0.02;
+  const key = [color, rough, metal, !!o.fabric, o.envI||0].join('|');
+  if(_matCache[key]) return _matCache[key];
+  const m = new THREE.MeshStandardMaterial({color, roughness:rough, metalness:metal});
+  if(o.fabric){ m.bumpMap = fabricBump; m.bumpScale = 0.0016; }
+  if(o.envI){ m.envMap = envTex; m.envMapIntensity = o.envI; }
+  return (_matCache[key] = m);
+}
+
+const snowMat = new THREE.MeshStandardMaterial({
+  color: 0xdde8f6,            // snow is never pure white; it picks up the sky
+  roughness: 0.82, metalness: 0.0,
+  bumpMap: snowBump, bumpScale: 0.028,
+  roughnessMap: snowRough,
+  side: THREE.DoubleSide
+});
+const slopeMesh = new THREE.Mesh(slopeGeo, snowMat);
+slopeMesh.position.z = SLOPE_Z_OFFSET;
+slopeMesh.receiveShadow = true;
+scene.add(slopeMesh);
+
+// distant mountains for context
+function makeMountain(x,z,h,r,color){
+  const geo = new THREE.ConeGeometry(r,h,6);
+  const mat = new THREE.MeshStandardMaterial({color:color, roughness:1});
+  const m = new THREE.Mesh(geo,mat);
+  m.position.set(x, h/2 - 4, z);
+  m.rotation.y = Math.random()*Math.PI;
+  scene.add(m);
+}
+makeMountain(-160,-140,50,20,0xdfeeff);
+makeMountain(170,-170,60,24,0xe8f2ff);
+makeMountain(-130,-210,55,22,0xd8e9fb);
+makeMountain(150,-70,42,16,0xecf5ff);
+makeMountain(-180,-60,45,18,0xe4f0fd);
+
+/* ============================================================
+   SKI LINE PATH  (S-curve down the slope) + gates + red/green tracks
+============================================================ */
+const START_Z = 4;
+const END_Z = SLOPE_TOP_Z - SLOPE_LENGTH + 12;   // stay inside the mesh
+
+/* ------------------------------------------------------------------
+   TECHNIQUE REGISTRY
+   Every skiing style is the SAME model with a different parameter set, so
+   adding a technique (or a drill under one) is a data edit, not new code.
+   A drill is just a named patch merged over its technique's parameters.
+
+   All angles in DEGREES, all distances in METRES.
+
+   -- shape & pace --
+   cycleLen  : arc length on the snow for one left+right cycle (= two turns).
+               With psiMax this sets the turn radius: R = cycleLen/(2*PI*psiMax).
+   psiMax    : how far the arc carries PAST the fall line before the edge
+               change. This is the actual definition of a closed turn, and it
+               is why the path is integrated from a heading instead of being a
+               sideways sine wave - a sine wave points back down the fall line
+               too early no matter how you scale it.
+               88 deg means the turn finishes pointing straight across the hill.
+   speed     : speed along the arc, m/s. Drives the derived inclination.
+
+   -- body --
+   maxLean   : safety clamp only. The inclination itself is DERIVED from speed
+               and turn radius (tan(lean) = v^2 / (R*g)), not dialled in.
+   angulation: how much the upper body counter-tilts against the hips
+   legLong   : hip-to-ankle distance when extended tall at the edge change (m)
+   legShort  : hip-to-ankle distance when compressed at the fall line (m)
+               Both drive the flexion/extension CYCLE only. They do not set the
+               inside leg's final length — snow contact does, and the inside
+               knee bends to whatever reaches. See the contact solve.
+   insideLift: deliberate air under the inside ski (m). 0 for everything except
+               a one-ski drill, where lifting it is the point of the exercise.
+   linkSharp : how decisive the edge change is. 0 = sinusoidal curvature, which
+               loiters near flat between arcs; higher squeezes the link into a
+               shorter part of the cycle and holds a steadier arc in between.
+               Note it cannot also raise the peak: psiMax and cycleLen fix the
+               total heading swept, so a flatter-topped curvature necessarily
+               has a LOWER peak, and the fall-line lean eases accordingly.
+   turnSkew  : where in the turn the steering happens. 0 = symmetric about the
+               fall line. Higher moves the fall line LATER, so the skis run into
+               it and the arc is finished decisively on the way out. It cannot
+               add total turning (psiMax fixes that) — it only redistributes it,
+               and that is exactly the trade: at 0.30 the top half was taking 63%
+               of the distance to sweep the same angle, so the entry steered at
+               only 1/1.7 the rate of the exit and read as not turning. 0.18 with
+               a sharper link keeps the exit the more active of the two without
+               starving the entry.
+               Clamped to 0.55, past which the warp stops being monotone.
+   stanceSplay: how far the legs angle OUT from the hips (deg) at the EDGE
+               CHANGE — the narrow end of the cycle. The hip joints themselves
+               are fixed by the pelvis, so width has to come from here. The ski's
+               own roll cancels it, leaving the edge angle untouched.
+   stanceSwing: how far the INSIDE leg moves toward the TURN CENTRE through
+               the arc (deg). The outside ski carries the turn and holds its
+               line; the unloaded inside ski moves in toward the centre and
+               forward (skiLead). Earlier versions opened BOTH legs (read as
+               the outside ski pushed out) and then drew the inside ski toward
+               the outside one (wrong way). Scaled by commit, 0 at the change.
+   steer     : femur rotation INTO the turn (deg at peak), both legs. A wedge
+               turn is steered — the skis are turned across the line of travel
+               and skid round — not carved. Zero for the parallel techniques.
+   bodyFollowSteer: how much of the steered V the chest and head face. 1 in a
+               wedge (body squares to the triangle the tips make), 0 in parallel
+               (body counters, the zipper line crosses the skis).
+   outsidePush: how far the OUTSIDE foot drives forward of the inside one (m,
+               at peak). The push a steered wedge turn is made with; also what
+               keeps the tips level when the outside ski is yawed further.
+   hipDrive  : how far the PELVIS drives forward over the feet as the turn
+               loads (m at peak). The hip is what powers a steered outside ski;
+               with only outsidePush the foot reached forward and the hips sat
+               back behind it.
+   alignTips : residual trim that slides each ski along its own axis to level
+               the tips (0-1). Kept small once outsidePush does the real work.
+   polePlant : pole plant (點仗), 0..1. The instructor's description: as the
+               turn is nearly finished, the pole is planted toward the centre
+               of the NEXT turn and the skier pushes up off it — that push is
+               what carries the weight across, so the plant and the weight
+               transfer are ONE moment. Through the whole turn the planting
+               hand travels slowly from behind to in front, ready for it; the
+               other hand opens a little outward. Not a flick at the end.
+   plantStart: how far through the closing of the turn the tip starts to drop
+               toward the snow (fraction of psiMax, 0..1). The hand itself has
+               been coming forward the whole turn.
+   plantRelease: after the touch, the pole is let go by the time |psi| has
+               fallen to this fraction of psiMax — the tip stays down through
+               the push and the edge change, then the skier moves past it.
+   plantSwing: half-amplitude of the hand's slow swing (deg at the shoulder):
+               the planting hand is this far forward of neutral at its plant
+               and this far behind at the other hand's plant.
+   handOpen  : how far the non-planting hand opens outward while the other
+               swings forward (deg).
+   handWide  : how far BOTH hands are carried out from the body (deg of
+               abduction at the shoulder). Wide in a carved turn — the hands
+               are held apart so the poles stay out of the way — narrower in
+               the wedge and stem, where the hands sit in front.
+   handTilt  : OUTSIDE hand drops, INSIDE hand rises (deg at peak, each). Levels
+               the shoulder line with the hips while the torso leans out over
+               the outside ski; with both hands carried at the same height the
+               outside shoulder dipped and the inside one rode up.
+   torsoOut  : upper body lean OVER the outside ski (deg at peak). This is the
+               wedge's weight transfer — the body is not inclined and the hips
+               barely move; the shoulders go across. 0 for parallel, where
+               the transfer comes from inclination + angulation instead.
+   perpStack : 0 = hips stacked over the feet against the HORIZON (the backseat),
+               1 = the HIP JOINT stacked perpendicular to the SNOW.
+               Pinned at 1 this over-corrected. What makes a stance backseat is
+               where the CENTRE OF MASS sits, not the hip joint: with the hip
+               forced directly over the ankle and the leg deeply folded, the knee
+               has nowhere to go but forward, and the shin was driven 46-55 deg
+               ahead of the ski against a boot's ~30. A real deep flex puts the
+               hips back and DOWN and folds the chest forward over them, which is
+               why torsoTrack and this move together. Measured whole-body COM
+               ends up CLOSER to the boot at 0.62 than it was at 1.0.
+               -- the difference between these two IS the up/down travel
+   legSplit  : how much shorter the INSIDE leg gets than the outside leg (m)
+   hipFore   : how far the hips travel ahead of / behind the boots (m)
+   skiLead   : how far the INSIDE ski runs ahead of the outside ski (m)
+   foreAft   : matching fore/aft lean of the upper body (degrees)
+   torsoTrack: torso lean as a fraction of the shin lean. 1.0 = dead parallel;
+               slightly under keeps the chest a touch taller than the shin,
+               which is what a balanced stance looks like
+
+   -- upper/lower body separation (拉鍊理論) --
+   counter   : how much of the ski heading the UPPER BODY refuses to follow,
+               Retuned down a quarter once the torso was stood up (torsoTrack
+               0.80 -> 0.46) and the shoulders widened 11%: the ANGLE had not
+               changed, but an axial twist on an upright, broader torso reads
+               far stronger than the same twist on one folded 59 deg forward.
+               A medium-radius turn shows roughly 10-25 deg of chest-vs-ski
+               separation; short turns and slalom are where 30-45 belongs.
+               0..1. The skis swing +/-psiMax off the fall line; the chest must
+               not. 0 = the zipper stays square to the skis (steering with the
+               shoulders); 1 = the chest holds the fall line exactly. What makes
+               the ski direction CROSS the zipper rather than run along it.
+   chestLag  : the shoulders FOLLOW the skis round the turn, this far behind
+               (fraction of a quarter turn, 0..1). What a strong `counter` got
+               wrong: holding the chest toward the fall line meant that at the
+               edge change the shoulders were already facing the NEXT turn —
+               leading the body round instead of following it, which reads as
+               a deliberate twist outward. With lag the chest still faces a
+               little into the OLD turn as the skis cross under it, and the
+               separation is largest just after the fall line, where the legs
+               are working hardest.
+   counterPelvisShare : how much of that separation comes from the pelvis rather
+               than the spine. The pelvis share is cancelled again at the hip
+               joints so the skis stay on the arc — anatomically this is femur
+               rotation in the hip socket.
+   gazeHold  : how close to the fall line the eyes stay, as a fraction of psi.
+               1 = eyes pinned to the fall line, 0 = head rides round with the
+               skis (which is what a beginner in a wedge actually does).
+   neckYawMax: hard cap on head yaw measured AGAINST THE CHEST (deg). A neck
+               gives roughly 30-40; whatever gazeHold asks for beyond this
+               simply does not happen.
+   gazeDown  : where the eyes are aimed in world elevation (deg, negative =
+               down the hill). Not a neck angle — the snow falls away ahead, so
+               this stays put while the torso pitches around underneath it.
+   headLevel : how much of the chest's bank is taken OUT of the head. 1 = eyes
+               dead level with the horizon, 0 = head banks with the shoulders.
+   bowGravity: the 反弓. 1.0 stands the torso vertical against GRAVITY at the
+               transition; above 1 carries it further down the hill. 0 leaves the
+               torso square to the slope, which is the fault it exists to fix.
+   hipLateral: lateral hip displacement toward the outside ski (m). Moves the
+               centre of mass out over the loaded ski.
+
+   -- wedge (0 on everything parallel) --
+   wedge     : total INCLUDED angle of the V, tips together and tails apart.
+               Applied as a yaw about each boot, so the tails open and the tips
+               stay put, which is how a real wedge is made.
+   wedgeClose: how fast the V closes to parallel as the turn develops.
+               0   = never closes            -> 犁式, a V the whole way down
+               1   = matched by the fall line -> 半犁式 / wedge christie
+               >1  = matched even earlier
+   wedgeAsym : 0..1, shifts the V onto the OUTSIDE ski. This is what makes the
+               half-plough genuinely "half": the inside ski comes parallel
+               first while the outside ski keeps steering.
+   skiRoll   : inward edge roll of each ski, on top of whatever the body lean
+               gives it. A wedge stands on BOTH inside edges at once, which no
+               amount of body lean can produce - it has to come from the feet.
+   stance    : extra half-width between the feet (m)
+   aframe    : hip splay that puts the knees inside the feet (degrees)
+   kneeIn    : extra tip of the INSIDE thigh into the turn, as a fraction of
+               the inclination. The inside knee drives toward the turn centre
+               and the thigh closes on the body as the turn deepens.
+   poleBack  : carving carries the poles pointing BACK, tips well off the
+               snow (deg below horizontal). 0 = hang the tip near the snow
+               (wedge, and any technique that plants).
+   pressurePhase: how much of the heading swing (edge change -> fall line = 1)
+               the flex-down takes after the change (the 施壓). 1 = the legs
+               reach full flex exactly at the fall line.
+   releaseWidth: |bank| range over which the legs extend at the edge change
+               (0 = old behaviour, extension follows commit). Smaller = the
+               release is a shorter moment.
+   loadSwing : how decisively weight moves to the outside ski, 0..0.5
+------------------------------------------------------------------ */
+const BASE_P = {
+  /* psiMax was 88 — two degrees short of straight across the hill — so every
+     turn ENDED in a traverse by construction, and the skier sat there 38% of
+     the time. Sharpening linkSharp could not fix it: the fraction of a cycle
+     spent in the top quarter of the heading range is scale-free, and bottoms
+     out around 27% however square the curvature gets. The angle itself is the
+     lever. cycleLen is scaled with it (74/88 x 108 = 91) because curvature goes
+     as psiMax/cycleLen — that keeps the arc, the lean and the outside-ski load
+     where they were, and only removes the dwell across the hill. */
+  /* angulation 0.72 -> 0.86: the shoulder line was 18 deg into the turn on
+     a 30 deg hip line, which read as the inside shoulder being dropped on
+     purpose. A carver's shoulders stay close to level. */
+  cycleLen:81, psiMax:66, speed:8.5, maxLean:55, angulation:0.86,
+  /* Hip-to-ankle, against a leg that is 0.859 m fully straight. 0.655 is 76%
+     extended and 0.495 is 57% — a genuinely flexed athletic stance. The old
+     0.730/0.580 stood the figure at 84%, which is why the mass kept reading as
+     too high no matter what the upper body did. */
+  /* hipFore 0.075/0.055 -> 0.045/0.110: measured against the ankles the
+     pelvis sat 7 cm BEHIND them from just after the edge change to past the
+     apex (perpStack pushes the ankles ~6 cm forward on its own), and with the
+     torso 8 deg aft on top the exit read as leaning back. Now the pelvis stays
+     0-9 cm ahead of the boots the whole way round. */
+  /* legLong 0.655 -> 0.61: the release read as a pop. The pelvis rises anyway
+     as the lean comes off (cos effect, ~12 cm), so the legs only need to add
+     ~10 cm. Peak pelvis speed 1.0 -> 0.65 m/s, torso nod 79 -> 38 deg/s. */
+  legLong:0.610, legShort:0.495, legSplit:0.130, kneeIn:0.14, poleBack:22, hipFore:0.045, hipForeBias:0.110,
+  skiLead:0.22, foreAft:3, torsoTrack:0.85,
+  /* 0.36 of psi = at most 32 deg of separation, split ~14 pelvis / ~18 spine.
+     0.55 asked for 48 and the solver spent 51 deg of pure spine twist to get
+     it, well past what a spine gives. */
+  /* counter: the chest is held a little toward the fall line (upper/lower
+     separation). 0.27 read as a deliberate outward twist (18 deg at the edge
+     change, chest pre-turned to the next arc); 0.03 read as none at all. 0.16
+     with a small lag: ~12 deg toward the fall line at the edge change, 14 max,
+     4 at the fall line — '上身向山腳方向打開扭多少少'. */
+  /* bowGravity 1.05 -> 0: the torso's LATERAL tilt is referenced to the
+     piste, not to gravity — '上身同車道保持 90 度' meant side-to-side. With
+     the gravity bow the chest hung toward the valley on a traverse; now the
+     upper body stands square to the snow and only the legs/hips incline. */
+  counter:0.16, chestLag:0.06, counterPelvisShare:0.45, bowGravity:0.0, hipLateral:0.062,
+  /* gazeHold 0.66 -> 0.35: a carver looks where the skis are going, with the
+     eyes drawn a little toward the fall line. At 0.66 the head sat 40 deg off
+     the chest at every edge change and swept 80 deg between them — the one
+     joint in the audit that read as a wrung neck. */
+  gazeHold:0.35, neckYawMax:30, gazeDown:-10, headLevel:0.72, insideLift:0,
+  /* linkSharp 4.2 -> 5.2, turnSkew 0.18 -> 0.10: the edge change — lean
+     flipping side, release, weight onto the new outside ski — is ONE short
+     moment. Measured: lean crosses from half one way to half the other in
+     0.65 s (was 2.0 s with skew 0.18, which held the new edge off), legs
+     tall for 0.28 s, load crossing 0.55 s. */
+  linkSharp:4.5, perpStack:0.62, turnSkew:0.10, stanceSplay:4.0, stanceSwing:7.0, releaseWidth:0.9, pressurePhase:1.0,
+  wedge:0, wedgeClose:0, wedgeAsym:0, skiRoll:0, stance:0, aframe:0, loadSwing:0.45,
+  stemLen:0.30, matchStart:0.15, matchEnd:0.55, wedgeBreath:0,
+  sideslip:0, slipHip:0.55, slipEdge:0, slipEdgeSwing:0, torsoOut:0, steer:0, bodyFollowSteer:0, alignTips:1, outsidePush:0, hipDrive:0, handTilt:0,
+  /* Off for the parallel techniques: they are carved, and a carved turn is
+     released by the edges, not pushed off a pole. The stem christie plants. */
+  polePlant:0, plantStart:0.62, plantRelease:0.60, plantSwing:20, handOpen:9, handWide:34
+};
+
+const TECHNIQUES = {
+  wedge: {
+    label:'犁式 Snowplough (Wedge)',
+    short:'犁式 Wedge',
+    note:'兩板成 V 字,板頭一個拳頭位、板尾打開,兩板輕輕企內刃。盤骨打開、企闊,膝頭對正腳、唔內扣。轉彎唔係用刃,係大腿發力轉板:外腳向前、向彎內推,臀部推上前,上身跟住一齊向前。重心轉移係上身靠過去外板,唔係成個人企過去。上身同頭對正 V 字方向;外手低、內手高,膊頭同髖先平衡到。身體唔傾斜 —— 傾斜係後面先學嘅嘢。',
+    P:{ cycleLen:70, psiMax:62, speed:3.8, maxLean:4, angulation:0.14,
+        legLong:0.565, legShort:0.515, legSplit:0.010, hipFore:0.028, hipForeBias:0.040,
+        /* 0.30: with the hips driving forward the torso comes UPRIGHT over
+           them and travels as one piece. At 0.52 it stayed folded 37 deg and
+           the shoulders hung 13 cm ahead of a pelvis that had moved on. */
+        skiLead:0.0, foreAft:3, torsoTrack:0.30,
+        /* A wedge skier has almost no separation yet — that is the next stage,
+           not this one — and stands square to the hill rather than bowed. */
+        /* A beginner looks at their own ski tips and turns their head with the
+           skis — the eyes are the LAST thing to lead at this stage. */
+        /* A wedge turn does NOT incline. maxLean was 16: the pelvis roll swung
+           both feet 10 cm to the outside, so the skis' midpoint ran away from
+           the hips and the pelvis never got more than half way across. With
+           the body kept near-vertical the whole lateral move is a genuine hip
+           shift, and 18 cm of it lands the pelvis 73% of the way from the
+           inside ski to the outside one — "重心靠過去外板". */
+        counter:0.02, chestLag:0, counterPelvisShare:0.30, bowGravity:0.30, hipLateral:0.035, torsoOut:14, polePlant:0, handWide:14, releaseWidth:0, kneeIn:0.10, poleBack:0,
+        gazeHold:0.05, neckYawMax:26, gazeDown:-15, headLevel:0.85,
+        /* A beginner really does link slowly and really does sit back. */
+        linkSharp:0.7, perpStack:0.58, turnSkew:0.06, stanceSplay:9, stanceSwing:1.2,
+        /* stance sets the CLEAR gap between the tips' inner edges — a fist,
+           ~10 cm. Measured edge to edge, not centre to centre: an earlier pass
+           tuned centres to 8 cm apart and forgot the ski is 11 cm wide, which
+           overlapped the tips by 3 cm. */
+        /* steer must stay below the inside ski's half-angle (halfWedge*(1-asym))
+           or that ski is twisted past straight and the V falls apart. */
+        wedge:22, wedgeClose:0, wedgeAsym:0.35, skiRoll:11, stance:0.152, aframe:0, steer:5, bodyFollowSteer:1.0,
+        /* 0.17 not 0.075: perpStack's vertical-stacking share pushes the ankles
+           ~6 cm forward of the hips on its own, so it takes this much drive for
+           the pelvis to actually arrive AHEAD of the outside foot (5 cm at peak). */
+        outsidePush:0.06, alignTips:0.35, hipDrive:0.17, handTilt:7,
+        loadSwing:0.38 },
+    drills:[
+      {name:'犁式轉彎 Wedge turn', aim:'大腿發力轉外板去引導方向,重心用上身靠過去外板。',
+       cues:['大腿發力轉板,唔係用刃雕','外腳向前、向彎內推;臀部推上前,上身跟住','重心轉移 = 上身靠過去外板,唔係企過去','上身同頭對正兩板頭中間','外手低、內手高 —— 膊頭同髖平衡','板頭保持一個拳頭距離,板尾打開'],
+       faults:['用膊頭扭轉彎','膝頭內扣(X 腳)','臀部留喺後面,淨係伸隻腳','成個人企過去外板','兩隻手一樣高,外膊頭跌落去','板頭夾埋或者打交']},
+      {name:'犁式直滑降 Gliding wedge', aim:'先練穩定嘅 V 字同前後平衡,唔轉彎。',
+       params:{psiMax:5, wedge:18, speed:3.2, stance:0.075, hipLateral:0, torsoOut:0, steer:0},   // straight run: equal weight, body still
+       cues:['小腿頂實靴舌','兩板平均承重','盤骨打開,膝頭對正腳','板頭一拳、V 字大細保持一致'],
+       faults:['坐後座,重心喺板尾','板頭打交叉','膝頭內扣']},
+      {name:'犁式煞停 Wedge stop', aim:'開大 V 字 + 兩邊一齊加壓去減速。',
+       /* A big V needs the feet correspondingly wide or the tips cross — at
+          wedge 46 they overlapped by 25 cm. */
+       /* a STOP needs edge — this is the one wedge drill that is not flat */
+       params:{psiMax:5, wedge:26, skiRoll:14, speed:2.6, legShort:0.515, legLong:0.565, stance:0.125, hipLateral:0, torsoOut:0, steer:0},
+       cues:['腳踭向外推,板頭唔郁','盤骨打開企闊,膝頭對正腳','兩板同時加立刃','身體保持中立,唔好向後仰'],
+       faults:['只係開腳但冇立刃','膝頭內扣去搵刃','上身向後,板頭浮起']},
+      {name:'大小犁式交替 Wedge size change', aim:'體會 V 字角度同速度嘅直接關係。',
+       /* wedgeClose stays well under 1: this drill opens and narrows the V, it
+          never matches to parallel — that is a different drill. */
+       params:{psiMax:5, wedge:24, wedgeClose:0, wedgeBreath:0.45, speed:3.4, stance:0.12, hipLateral:0, torsoOut:0, steer:0},
+       cues:['開大 = 慢,收窄 = 快','開合嗰陣重心保持喺中間','由盤骨開合,膝頭跟住腳'],
+       faults:['收窄嗰陣身體向前衝','用膝頭扣入去收窄']}
+    ]
+  },
+  sideslip: {
+    label:'側滑 Side-slipping',
+    short:'側滑',
+    note:'兩板橫住山坡,上身面向落山線,靠減少立刃角俾板向側面滑落。冇轉向,純粹練立刃控制同上下身分離 —— 平行式嘅基本功。',
+    P:{ cycleLen:60, psiMax:3, speed:2.4, maxLean:6, angulation:0.30,
+        legLong:0.615, legShort:0.575, legSplit:0.010, hipFore:0.020, hipForeBias:0.040,
+        skiLead:0.0, foreAft:2, torsoTrack:0.60, loadSwing:0.20,
+        counter:0, chestLag:0, counterPelvisShare:0.5, bowGravity:0.40, hipLateral:0.0, polePlant:0, handWide:16, releaseWidth:0, kneeIn:0.10, poleBack:0,
+        gazeHold:1.0, neckYawMax:22, gazeDown:-14, headLevel:0.85,
+        linkSharp:0, perpStack:0.70, turnSkew:0, stanceSplay:4.5, stanceSwing:0,
+        /* skis 72 deg across the travel line; pelvis opens half way toward them,
+           the femurs and spine share the rest. A light uphill edge is what
+           lets the skis slip instead of grip. */
+        sideslip:72, slipHip:0.50, slipEdge:7 },
+    drills:[
+      {name:'直側滑 Straight side-slip', aim:'兩板橫住,慢慢放平立刃,俾板直落。',
+       cues:['上身面向落山線,對板橫住','用腳踝放平立刃 → 開始滑;加返立刃 → 停','重心留喺下山板'],
+       faults:['上身跟住板橫轉','用膝頭撬而唔係腳踝','立刃一放就放晒,失控']},
+      {name:'落葉飄 Falling leaf', aim:'側滑之中加前後重心,板頭板尾輪流帶路。',
+       /* a little travel-line wiggle makes the skis point more across on one
+          side and less on the other, which is the zig-zag a leaf leaves */
+       params:{psiMax:22, cycleLen:34, speed:2.8, foreAft:9, hipFore:0.060},
+       cues:['重心向前 → 板頭先落;向後 → 板尾先落','立刃角保持一樣,淨係郁前後'],
+       faults:['靠轉板去改方向而唔係靠前後','前後幅度太細,睇唔到分別']},
+      {name:'立刃控制 Edge set & release', aim:'交替加立刃(停)同放立刃(滑),練刃嘅開關。',
+       params:{slipEdgeSwing:12, cycleLen:40, speed:2.0},
+       cues:['加立刃嗰下要果斷,放要慢','兩板同時加、同時放'],
+       faults:['一隻板先郁,另一隻遲到','靠身體傾側去加立刃']}
+    ]
+  },
+
+  halfWedge: {
+    label:'半犁式 Stem / Wedge Christie',
+    short:'半犁式 Stem',
+    note:'入彎嗰陣推出外板成半個犁,承重之後內板跟埋上嚟併成平行。呢個係由犁式過渡去平行式嘅關鍵一步。',
+    P:{ cycleLen:88, psiMax:72, speed:5.6, maxLean:32, angulation:0.46,
+        legLong:0.660, legShort:0.560, legSplit:0.028, hipFore:0.048, hipForeBias:0.048,
+        skiLead:0.07, foreAft:5, torsoTrack:0.72,
+        counter:0.04, chestLag:0.10, counterPelvisShare:0.42, bowGravity:0.72, hipLateral:0.055, torsoOut:6, polePlant:1, handWide:18, releaseWidth:0, kneeIn:0.10, poleBack:0,
+        gazeHold:0.55, neckYawMax:30, gazeDown:-12, headLevel:0.78,
+        linkSharp:1.7, perpStack:0.60, turnSkew:0.12, stanceSplay:2.4, stanceSwing:2.8,
+        wedge:20, wedgeClose:1.0, wedgeAsym:0.50, skiRoll:11, stance:0.080, aframe:3, steer:3, bodyFollowSteer:0.5,
+        outsidePush:0.05, hipDrive:0.05, handTilt:16,
+        stemLen:0.30, matchStart:0.18, matchEnd:0.58,
+        loadSwing:0.44 },
+    drills:[
+      {name:'半犁式轉彎 Wedge christie', aim:'推撐 → 承重 → 併腿,一個彎行完三步。',
+       cues:['換刃嗰陣先推外板出去','壓力上晒外板之後,內板先併埋','落山線之後應該已經係平行','外手低、內手高,膊頭同髖平衡','點仗借力撐起身,同推撐、轉重心一齊做'],
+       faults:['推咗出去但一直冇併返','未承重就急住併腿,變咗跣']},
+      {name:'外板推撐 Stem push-off', aim:'放大推撐嘅動作,睇清楚外板點樣搵到新邊。',
+       params:{wedge:24, wedgeClose:1, wedgeAsym:0.80, stemLen:0.36, matchStart:0.30, matchEnd:0.70, stance:0.155},
+       cues:['推出去嗰下係腳踭向外,唔係板頭向內','推出之後即刻踩落去'],
+       faults:['推出去之後重心仲喺舊嘅內板']},
+      {name:'早期併腿 Early matching', aim:'縮短犁式階段,逼近平行式。',
+       params:{wedge:16, wedgeClose:1, wedgeAsym:0.55, speed:6.4, stemLen:0.22, matchStart:0.05, matchEnd:0.40},
+       cues:['推撐一出現就即刻收','併腿之後用刃去完成個彎'],
+       faults:['併得太早,個彎變咗側滑']},
+      {name:'半犁式接平行 Stem to parallel', aim:'上半個彎半犁,下半個彎完全平行。',
+       /* psiMax was 80, which left this drill traversing 33% of the time — the
+          worst in the set once the others were fixed. 72 matches its technique. */
+       params:{wedge:20, wedgeClose:1, psiMax:72, speed:6.8, angulation:0.42,
+               stemLen:0.28, matchStart:0.12, matchEnd:0.50,
+               maxLean:42, linkSharp:2.3},
+       cues:['彎嘅結束要對住山側','出彎前兩板已經完全平行'],
+       faults:['成個彎都保持住半犁']}
+    ]
+  },
+  parallelClosed: {
+    label:'平行式 封閉彎 Parallel (Closed)',
+    short:'平行式 封閉彎',
+    note:'兩板全程平行,彎嘅結束對住山側。速度由彎型控制而唔係由煞車控制。重心踩外板,以腰為中心向另一邊平衡。',
+    P:{},                                   // the baseline
+    drills:[
+      {name:'封閉式中彎 Closed medium turn', aim:'標準示範:用彎型控速,重心完全上外板。',
+       cues:['換刃係一下:企高減壓、重心過去新外板、刃由一邊轉去另一邊 —— 同一刻做完','減壓快,施壓慢 —— 入咗新彎慢慢屈低加壓,去到落山線最深','彎嘅結束對住山側,唔好早收','上身向山腳打開少少,腳喺下面轉 —— 有少少上下分離','以腰為中心,上身向外平衡','對手架開,仗指向後面,唔會點地','膊頭保持水平,唔好刻意沉內膊','內腿越入彎越屈、越前、越向彎心移;膝頭向彎心,大腿貼近身體','內板承重少,自由向彎心行 —— 外板唔郁','出彎企高向前,唔好仰後'],
+       faults:['未過落山線就換刃 → 變開放彎','上身跟住傾,冇角度','出彎仰後、坐後','外板向外推','內膊頭沉落去','仗尖指住地下','膊頭預先扭向下一個彎,刻意向外轉']},
+      {name:'上下移動 Up & Down', aim:'放大減壓 / 施壓,睇清楚壓力嘅節奏。',
+       params:{legLong:0.700, legShort:0.450, foreAft:6},
+       cues:['換刃嗰陣伸高 = 減壓','過落山線嗰陣屈低 = 施壓','伸同屈都要順,唔好彈'],
+       faults:['喺落山線先伸高 —— 啱啱相反','只係郁上身,腳冇伸屈']},
+      {name:'前後移動 Fore / Aft', aim:'入彎向前、出彎回中,重心沿住板嘅長度行。',
+       params:{foreAft:15, hipFore:0.125, hipForeBias:0.070},
+       cues:['入彎:小腿壓靴舌,壓力去板頭','出彎:重心返中,壓力去板腰'],
+       faults:['全程坐後座','用上身撻前而唔係用腳踝']},
+      {name:'外板單腳 Outside ski only', aim:'逼重心 100% 上外板,內板輕到近乎離雪。',
+       /* The only drill where a ski SHOULD be off the snow, so it is asked for
+          explicitly — 3 cm, light rather than hoisted. */
+       params:{legSplit:0.115, angulation:0.66, insideLift:0.03},
+       cues:['內腳收高,只係跟住行','所有壓力喺外板腳底','以腰為中心去補平衡'],
+       faults:['靠傾側身體去卸力,而唔係靠角度']},
+      {name:'小回轉 Short turns', aim:'同樣係封閉彎,但頻率高、節奏快。',
+       params:{cycleLen:56, psiMax:68, speed:6.6, legLong:0.630, legShort:0.520,
+               linkSharp:4.6},          // short turns live on a fast edge change
+       cues:['腳下快,上身穩','每個彎都要過落山線先換刃'],
+       faults:['上身左右擺,變咗掃彎']}
+    ]
+  },
+  parallelOpen: {
+    label:'平行式 開放彎 Parallel (Open)',
+    short:'平行式 開放彎',
+    note:'對比用。彎未行完就換刃,所以速度一路累積 —— 攞嚟同封閉彎比較,學員好快睇到分別。',
+    P:{ cycleLen:108, psiMax:40, speed:9.5, maxLean:45, angulation:0.72,
+        legLong:0.690, legShort:0.615, legSplit:0.060, kneeIn:0.12, hipFore:0.030, hipForeBias:0.105,
+        skiLead:0.14, foreAft:3, torsoTrack:0.80, loadSwing:0.40,
+        counter:0.16, chestLag:0.06, counterPelvisShare:0.42, bowGravity:0.78,
+        gazeHold:0.35, neckYawMax:30, gazeDown:-9, headLevel:0.74,
+        /* The point of this one is that the arc is NOT finished, so the link
+           stays lazy on purpose — that is the fault being demonstrated. */
+        linkSharp:1.1, perpStack:0.62, turnSkew:0.04, stanceSplay:4.0, stanceSwing:5.0,
+        hipLateral:0.042, legSplit:0.030 },
+    drills:[
+      {name:'開放式大彎 Open turn', aim:'對照組:睇住彎點樣收唔住速度。',
+       cues:['留意彎嘅結束仲係向住山下','同封閉彎比較滑行速度'],
+       faults:['—— 呢個本身就係要改嘅示範']},
+      {name:'開放彎收成封閉彎 Closing the arc', aim:'同一條線,逐步延長彎尾。',
+       params:{psiMax:66, speed:8.0},
+       cues:['換刃遲少少,等個彎行多啲','彎尾開始向住山側'],
+       faults:['靠煞車減速而唔係靠彎型']}
+    ]
+  }
+};
+
+let techKey  = 'parallelClosed';
+let drillIdx = 0;
+/* Set by the teaching sliders, consumed once per frame in animate(). Declared
+   up here because animate() is defined long before the sliders are built. */
+let shapeDirty = false, tracksDirty = false;
+
+/* Merged parameters for the current technique + drill. Cached because the pose
+   function reads it every frame and 1400 times more whenever the tracks are
+   rebuilt. */
+let _P = null;
+function buildParams(){
+  const t = TECHNIQUES[techKey];
+  const d = t.drills[drillIdx] || {};
+  _P = Object.assign({}, BASE_P, t.P, d.params || {});
+  buildPsiTable(_P.linkSharp, _P.turnSkew);
+}
+/* NOTE: the first buildParams() call lives below the turn-shape block, because
+   it now builds the psi table and those `const`s are not initialised until
+   then — calling it up here threw on the temporal dead zone. */
+function styleParams(){ return _P; }
+function cycleLen(){ return _P.cycleLen; }
+
+/* ---------------- turn shape: how long the link between arcs is ----------------
+   A sinusoidal heading gives SINUSOIDAL CURVATURE, and a sinusoid crosses zero
+   lazily: measured, the old shape spent 20% of every half-cycle below a tenth
+   of full edge, so the figure drifted flat between arcs instead of changing
+   edges and going. `linkSharp` reshapes the curvature toward a flat-topped
+   wave — the arc holds a steadier radius and the edge change is squeezed into a
+   shorter stretch of the cycle:
+
+       curvature   f(c) = tanh(k*c)/tanh(k),   c = cos(u)
+       heading     psi(u) = psiMax * (integral of f, normalised to +/-1)
+
+   f(+/-1) = +/-1 whatever k is, so the shape of the link can be changed without
+   silently rescaling anything at the fall line.
+
+   The path integration and the pose BOTH read from this pair, so the line the
+   skier travels and the arc they are leaning for cannot drift apart — that link
+   is the whole reason the lean is believable, and shaping only one of them
+   would have quietly broken it.
+
+   ---------------- and `turnSkew`: WHERE in the turn the work happens ----------
+   The base shape is symmetric about the fall line, so the skier steers exactly
+   as hard arriving at it as leaving it. Real technique is not symmetric: you
+   let the skis run into the fall line and then finish the arc decisively.
+
+   Within one turn the heading has to travel from -psiMax to +psiMax, so the
+   average curvature over the turn is FIXED — "more active" cannot mean more
+   total turning, it can only mean the same turning packed into less distance
+   on the way out. So the fall line is moved LATER in the turn: the entry gets
+   longer and gentler, the completion shorter and tighter.
+
+   A monotone warp of the half-turn does it, with the ends pinned:
+
+       W(p) = p - skew*(1 - p^2)^2,   p = position in the turn, -1..+1
+       W(+/-1) = +/-1   (edge change still lands exactly on +/-psiMax)
+       W(0)    = -skew  (the fall line is no longer at the midpoint)
+       W'(p)   = 1 + 4*skew*p*(1 - p^2)    -> slower in, faster out
+
+   The (1-p^2) is SQUARED for a reason. The obvious first try, p + s(p^2-1),
+   pins the ends but leaves W'(-1) = 1-2s and W'(+1) = 1+2s. Curvature near an
+   edge change goes as W'^2, so at skew 0.3 the outgoing turn ended sixteen
+   times steeper than the incoming one began, and the lean had a corner at every
+   transition: second difference 0.78 deg in 5 samples out of 3000, against
+   0.006 for the symmetric shape. Pinning the endpoints is not enough — the
+   SLOPES have to match too.
+
+   With the square, W'(+/-1) = 1 on both sides, so the warp fades to nothing
+   exactly where one turn hands over to the next. Monotone needs skew < 0.65
+   (W' bottoms out at 1 - 1.54*skew near p = -1/sqrt(3)); clamped at 0.55. */
+const PSI_N = 720;
+const _psiTab = new Float64Array(PSI_N + 1);
+let _psiNorm = 1, _curvMax = 1, _shapeKey = null;
+function curveShape(c, k){ return k <= 1e-6 ? c : Math.tanh(k*c) / Math.tanh(k); }
+/* Clamped here rather than at the call sites, so the table, the path and the
+   pose can never be built from three different values of it. */
+function skewOf(s){ return THREE.MathUtils.clamp(s || 0, -0.55, 0.55); }
+function warp (p, s){ const q = 1 - p*p; return p - skewOf(s)*q*q; }
+function warpD(p, s){ return 1 + 4*skewOf(s)*p*(1 - p*p); }
+function buildPsiTable(k, skew){
+  const s = skewOf(skew);
+  const key = k + '|' + s;
+  if(_shapeKey === key) return;
+  const du = (Math.PI/2) / PSI_N;
+  let acc = 0;
+  _psiTab[0] = 0;
+  for(let i = 1; i <= PSI_N; i++){
+    acc += 0.5 * (curveShape(Math.cos((i-1)*du), k) + curveShape(Math.cos(i*du), k)) * du;
+    _psiTab[i] = acc;
+  }
+  for(let i = 0; i <= PSI_N; i++) _psiTab[i] /= acc;
+  _psiNorm = acc;
+  /* The warp amplifies curvature on the way out, so renormalise `bank` to +/-1
+     off the ACTUAL peak rather than assuming it still sits at the fall line. */
+  _curvMax = 0;
+  for(let i = 0; i <= 2*PSI_N; i++){
+    const p = -1 + i/PSI_N;
+    const c = Math.abs(curveShape(Math.cos(warp(p,s)*Math.PI/2), k) * warpD(p,s));
+    if(c > _curvMax) _curvMax = c;
+  }
+  _shapeKey = key;
+}
+/* Base heading shape on [-1,1], odd, from the quarter-period table. */
+function baseT(x){
+  const sg = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  if(x >= 1) return sg;
+  const q = x * PSI_N, i = q | 0, fr = q - i;
+  return sg * (_psiTab[i] + (_psiTab[i+1] - _psiTab[i]) * fr);
+}
+/* Position within the current turn: p in [-1,1], and which way it bends. */
+function _turnP(u){
+  const n = Math.floor(u/Math.PI + 0.5);
+  return { p: (u - n*Math.PI) / (Math.PI/2), sg: (n & 1) ? -1 : 1 };
+}
+function psiShape(u, skew){
+  const t = _turnP(u);
+  return t.sg * baseT(warp(t.p, skew));
+}
+/* Normalised signed curvature: +/-1 at the hardest-steering point of the turn,
+   0 at the edge change. */
+function curvShape(u, k, skew){
+  const t = _turnP(u);
+  return t.sg * curveShape(Math.cos(warp(t.p,skew)*Math.PI/2), k) * warpD(t.p,skew) / _curvMax;
+}
+
+buildParams();          // safe here: the psi table's bindings now exist
+
+/* Integrate the heading to get the line.
+     dx/ds  =  sin(psi)      dz/ds = -cos(psi)
+   psi swings a full +/-psiMax, so the arc really does finish across the hill
+   before the edge change, which a sideways sine wave can never do. */
+function buildPathPoints(psiMaxDeg){
+  const psiMax = THREE.MathUtils.degToRad(psiMaxDeg);
+  const ds = 0.25;
+  const pts = [];
+  let x = 0, z = START_Z, s = 0;
+  while(z > END_Z && s < 2000){
+    const psi = psiMax * psiShape(2*Math.PI * s / cycleLen(), styleParams().turnSkew);
+    pts.push(new THREE.Vector3(x, heightAt(z)+PATH_LIFT, z));
+    x += Math.sin(psi) * ds;
+    z -= Math.cos(psi) * ds;
+    s += ds;
+  }
+  /* A turn this closed sweeps a wide corridor, and the integration always
+     starts at the left edge of it. Re-centre so the run sits down the middle
+     of the piste instead of hugging one side. */
+  let lo = Infinity, hi = -Infinity;
+  for(const p of pts){ lo = Math.min(lo, p.x); hi = Math.max(hi, p.x); }
+  const mid = (lo + hi) / 2;
+  for(const p of pts) p.x -= mid;
+
+  pts.horizLength = s;   // arc length measured on the horizontal plane
+  return pts;
+}
+
+let pathCurve, pathGroup, gatesGroup, cogTrailGroup;
+/* What the last updateSkierPose() measured, for anything that wants to draw
+   the SAME numbers the HUD shows rather than re-derive its own. */
+const poseInfo = {loadOut:0.5, outsideIsRight:false};
+let pathHorizLen = 1;   // horizontal arc length of the whole run
+
+function rebuildPath(){
+  /* Dispose, not just remove. This runs on every technique change AND once per
+     frame while a slider is dragged, and each pass makes two geometries plus a
+     fresh material per gate. Removing the group from the scene drops the JS
+     references but leaves the GPU buffers and shader programs allocated — a
+     long lesson with a lot of slider work would climb steadily in VRAM. */
+  if(pathGroup){
+    pathGroup.traverse(o=>{
+      if(o.geometry) o.geometry.dispose();
+      if(o.material) o.material.dispose();
+    });
+    scene.remove(pathGroup);
+  }
+  pathGroup = new THREE.Group();
+
+  const centerPts = buildPathPoints(styleParams().psiMax);
+  pathHorizLen = centerPts.horizLength;
+  pathCurve = new THREE.CatmullRomCurve3(centerPts);
+
+  /* Slalom gates marking each turn apex */
+  gatesGroup = new THREE.Group();
+  const GATE_H = 1.55;
+  const poleGeo = new THREE.CylinderGeometry(0.022,0.022,GATE_H,6);
+  const flagGeo = new THREE.PlaneGeometry(0.30,0.22);
+  for(let i=1;i<centerPts.length-1;i++){
+    const prev = centerPts[i-1].x, cur = centerPts[i].x, next = centerPts[i+1].x;
+    const sign = Math.sign(cur-prev);
+    const nextSign = Math.sign(next-cur);
+    if(sign!==0 && sign!==nextSign){ // local extremum -> turn apex
+      const color = cur < 0 ? 0xff4d4f : 0x3ddc84;
+      const mat = new THREE.MeshStandardMaterial({color, roughness:0.7});
+      const pole = new THREE.Mesh(poleGeo, mat);
+      const flag = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({color, roughness:0.8, side:THREE.DoubleSide}));
+      const gx = cur + (cur<0 ? -1.5 : 1.5);
+      const gy = heightAt(centerPts[i].z);
+      pole.position.set(gx, gy+GATE_H/2, centerPts[i].z);
+      flag.position.set(gx + (cur<0?-0.15:0.15), gy+GATE_H-0.14, centerPts[i].z);
+      pole.castShadow = true;
+      gatesGroup.add(pole, flag);
+    }
+  }
+  pathGroup.add(gatesGroup);
+
+  scene.add(pathGroup);
+}
+rebuildPath();
+
+// COG trail (fading dots showing recent center-of-gravity path)
+cogTrailGroup = new THREE.Group();
+scene.add(cogTrailGroup);
+const trailMax = 40;
+const trailDots = [];
+for(let i=0;i<trailMax;i++){
+  const g = new THREE.SphereGeometry(0.045,6,6);
+  const m = new THREE.MeshBasicMaterial({color:0xffcf4f, transparent:true, opacity:0});
+  const mesh = new THREE.Mesh(g,m);
+  cogTrailGroup.add(mesh);
+  trailDots.push(mesh);
+}
+let trailPtr = 0;
+
+/* ============================================================
+   HUMANOID SKIER RIG
+============================================================ */
+/* Body segment, built by revolving a radius profile rather than stacking a
+   cylinder between two spheres. A straight tube reads as a prop; real limbs
+   swell at the muscle belly and neck down to the joint, and that taper is most
+   of what separates a figure from a set of primitives.
+
+   `profile` is [[t, radius], ...] with t = 0 at the joint and 1 at the far end.
+   t may go slightly negative to round the cap back over the joint itself.
+   dir = -1 builds DOWNWARD from the joint (arms, legs); +1 builds UPWARD
+   (torso). Getting that wrong is what once buried the head at knee height. */
+function capsulePart(profile, length, color, dir, radialSeg, flatten){
+  dir = dir || -1;
+  radialSeg = radialSeg || 24;
+  const raw = profile.map(([t, r]) => new THREE.Vector2(Math.max(r, 1e-4), dir * t * length));
+  if(dir < 0) raw.reverse();                      // lathe needs monotonic +y
+  /* LatheGeometry joins profile points with STRAIGHT LINES, so the 8-10 authored
+     points were showing up as facets running down the length of every limb —
+     the "blocky" look. Resampling through a spline first keeps exactly the same
+     authored shape but gives the silhouette an actual curve. Clamped at 0
+     because a spline through a profile that ends at r=0 can overshoot negative
+     and turn the cap inside out. */
+  const pts = new THREE.SplineCurve(raw)
+    .getPoints(Math.max(raw.length * 6, 48))
+    .map(p => new THREE.Vector2(Math.max(p.x, 1e-4), p.y));
+  const geo = new THREE.LatheGeometry(pts, radialSeg);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, bodyMat(color, {fabric:true}));
+  if(flatten) mesh.scale.z = flatten;             // torsos are wider than they are deep
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.userData.length = length;
+  return group;
+}
+
+/* A joint ball, parented at a rotation centre so the limbs either side stay
+   visually joined at ANY bend angle.
+   Every limb profile tapers to r = 0 at both ends, which makes a neat spindle
+   on its own but means a bent knee or elbow met point-to-point and read as two
+   separate objects with a gap between them. A sphere at the pivot, sized to the
+   limb radius there, is what turns that back into one continuous body — and
+   because it sits exactly on the axis of rotation it can never come apart. */
+function jointBall(parent, radius, color, squash){
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(radius, 20, 14),
+                              bodyMat(color, {fabric:true}));
+  if(squash) ball.scale.set(squash[0], squash[1], squash[2]);
+  parent.add(ball);
+  return ball;
+}
+
+/* Girth scaling. The profile radii below are ABSOLUTE metres, so they do not
+   follow when a segment's length changes — and the authored values described a
+   noticeably heavier figure than 1.75 m anthropometry allows (chest 39 cm
+   across against a real ~32, thigh 22 cm through against ~17). These factors
+   bring each girth to a real measurement plus an allowance for ski clothing,
+   which is genuinely bulky. */
+const G_TORSO = 0.89, G_THIGH = 0.86, G_SHIN = 0.80, G_ARM = 0.85;
+const scaleProf = (p, k) => p.map(([t, r]) => [t, r * k]);
+
+/* Radius profiles, in fractions of each segment's length. */
+/* Upper radii run OUT toward the shoulder joints rather than necking in. The
+   girth scale plus the anthropometric shoulder width had opened a visible gap
+   between the top of the torso and each shoulder ball: torso 10.7 cm at the
+   girdle, ball inner edge 14.8 cm out. */
+const PROF_TORSO = scaleProf([[-0.03,0.0],[0.00,0.150],[0.12,0.163],[0.34,0.181],[0.58,0.193],
+                    [0.78,0.198],[0.90,0.202],[0.97,0.186],[1.00,0.152],[1.03,0.0]], G_TORSO);
+const PROF_UPPERARM = scaleProf([[-0.26,0.0],[-0.20,0.046],[-0.12,0.068],[-0.03,0.077],[0.10,0.076],
+                       [0.38,0.070],[0.68,0.062],[0.92,0.056],[1.00,0.050],[1.06,0.0]], G_ARM);
+const PROF_FOREARM  = scaleProf([[-0.10,0.0],[-0.04,0.048],[0.04,0.062],[0.20,0.063],[0.52,0.054],
+                       [0.82,0.046],[1.00,0.042],[1.07,0.0]], G_ARM);
+const PROF_THIGH = scaleProf([[-0.10,0.0],[-0.05,0.072],[0.00,0.101],[0.14,0.110],[0.40,0.106],
+                    [0.68,0.094],[0.90,0.084],[1.00,0.078],[1.05,0.0]], G_THIGH);
+const PROF_SHIN  = scaleProf([[-0.05,0.0],[0.00,0.086],[0.10,0.093],[0.30,0.083],[0.58,0.068],
+                    [0.82,0.057],[1.00,0.052],[1.05,0.0]], G_SHIN);
+
+/* Matched to the reference photo: orange chest-and-shoulder yoke over a dark
+   navy shell, navy pants, black helmet, tinted goggles. */
+const COL_JACKET  = 0x232936;   // navy shell — sleeves and lower torso
+const COL_YOKE    = 0xdd6a1f;   // orange across the chest and shoulders
+const COL_TRIM    = 0xc9d2de;   // the pale zip / piping line
+const COL_PANTS   = 0x1d222c;
+const COL_SKIN    = 0xe0ab83;
+const COL_HELMET  = 0x16181e;
+const COL_LENS    = 0x2f86d8;   // blue mirrored lens, as in the reference photo
+const COL_STRAP   = 0xa3333a;   // reddish goggle strap
+const COL_GLOVE   = 0x2a2e35;
+const COL_BOOT    = 0x141414;
+const COL_SKI_TOP = 0xc9d0dc;   // light topsheet, like the photo
+const COL_SKI_BASE = 0x1a1c22;
+
+/* Body proportions for a ~1.78 m skier (metres) */
+/* ================= Body, built from one stature =================
+   Every length below is a published fraction of standing height (Winter,
+   "Biomechanics and Motor Control of Human Movement"; Drillis & Contini), so
+   changing STATURE alone rescales a correctly-proportioned figure.
+
+   This replaced hand-picked numbers that had drifted badly out of proportion.
+   The figure measured 184 cm, and the error was concentrated in ONE place: the
+   hip joint sits below the pelvis root and the shoulder girdle above it, so
+   hip-to-shoulder was 0.06 + 0.09 + 0.48 = 63 cm where anthropometry wants
+   0.288 x H = 50 cm. The legs were fine all along (within 5%).
+
+   Joint HEIGHTS above the floor, as fractions of H:
+     ankle 0.039   knee 0.285   hip 0.530   shoulder 0.818   crown 1.000       */
+const STATURE   = 1.75;
+const SHIN_LEN  = (0.285 - 0.039) * STATURE;   // ankle -> knee      0.4305
+const THIGH_LEN = (0.530 - 0.285) * STATURE;   // knee  -> hip       0.4288
+const HIP_TO_SHOULDER   = (0.818 - 0.530) * STATURE;   //            0.5040
+const SHOULDER_TO_CROWN = (1.000 - 0.818) * STATURE;   //            0.3185
+const HEAD_HEIGHT   = 0.130 * STATURE;         // crown -> chin      0.2275
+const BIACROMIAL    = 0.245 * STATURE;         // shoulder joints apart
+const HIP_SEPARATION = 0.100 * STATURE;        // hip joints apart
+const UPPERARM_LEN  = 0.186 * STATURE;         // shoulder -> elbow  0.3255
+const FOREARM_LEN   = 0.146 * STATURE;         // elbow -> wrist     0.2555
+
+/* The pelvis group is the rig root. The hip joints hang below it and the waist
+   pivot sits above it; the three have to add up to HIP_TO_SHOULDER. Split kept
+   at the proportions the rig already used (9.5% / 14.3% / 76.2%). */
+const HIP_DROP   = 0.095 * HIP_TO_SHOULDER;    // pelvis root -> hip joint
+const WAIST_RISE = 0.143 * HIP_TO_SHOULDER;    // pelvis root -> waist pivot
+const TORSO_LEN  = HIP_TO_SHOULDER - HIP_DROP - WAIST_RISE;
+const HIP_HALF_WIDTH = HIP_SEPARATION / 2;
+
+/* Boot drawn for a larger skier; scaled so its sole sits just above the ski.
+   Lowest drawn point is 0.166 below the ankle, and it needs to clear the
+   binding, so the scale is set from the stack that has to fit under the ankle. */
+const ANKLE_TO_SKI = 0.039 * STATURE + 0.072;  // ankle height + boot sole/binding/ski
+const SKI_TOP      = 0.015;                    // ski box is 0.03 thick, centred
+const BINDING_H    = 0.012;                    // plate the boot actually sits on
+/* Sole lands exactly on the binding plate. This used to leave 1.1 cm of air
+   between sole and topsheet with nothing drawn in it — the foot floated. */
+const BOOT_SCALE   = (ANKLE_TO_SKI - SKI_TOP - BINDING_H) / 0.166;
+const SKI_LEN = 1.70, SKI_MOUNT_OFFSET = 0.10; // ski centre sits slightly ahead of the boot
+
+/* Skier local frame: +Z = forward (downhill), +Y = up, +X = the skier's LEFT. */
+const skier = new THREE.Group();
+
+/* --- Pelvis: root of the body, and our centre-of-gravity reference.
+       Its height is solved every frame so the skis stay on the snow. --- */
+const pelvis = new THREE.Group();
+pelvis.position.set(0, 0.95, 0);
+skier.add(pelvis);
+
+/* --- Waist: TWO nodes, and the order between them matters. ---
+   spineHinge  side-bends (the 反弓) and pitches forward, in the PELVIS frame.
+   spineTwist  axial rotation only (the separation), about the already-bent
+               spine's own long axis — which is how a spine actually works.
+
+   They were one node before, and that destroyed the bow: with the twist
+   outermost, a "lateral" bend got swung by the twist, so at 45 deg of
+   separation half the angulation turned into fore/aft lean and the C-shape
+   flattened out. Bending first and twisting about the bent axis keeps the bow
+   in the frontal plane where it belongs. */
+const spineHinge = new THREE.Group();
+spineHinge.position.set(0, WAIST_RISE, 0);
+pelvis.add(spineHinge);
+/* The pelvis. This was a 30 x 20 x 22 cm BOX — the one flat-sided block left
+   on an otherwise rounded body, and up close it read as a crate the torso was
+   standing in. An ellipsoid on the pelvis root spans both hip joints and
+   reaches up into the waist ball. */
+const pelvisMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 22, 16), bodyMat(COL_PANTS, {fabric:true}));
+pelvisMesh.scale.set(HIP_HALF_WIDTH + 0.088, 0.108, 0.130);
+pelvisMesh.position.set(0, -HIP_DROP + 0.035, 0.0);
+pelvis.add(pelvisMesh);
+const spineTwist = new THREE.Group();
+spineTwist.rotation.order = 'YXZ';        // pure axial rotation, applied alone
+spineHinge.add(spineTwist);
+const TORSO_FLAT = 0.78;                  // chest is wider across than front-to-back
+/* Waist ball on the bend/twist pivot. The torso profile starts at r = 0, so at
+   full 反弓 the chest was pulling away from the pelvis and opening a gap right
+   where the body is supposed to be most obviously one piece. */
+/* Radius set from the torso's OWN base radius (profile t=0 is 0.150) plus a
+   margin, so the base ring is inside the ball at any pitch. At 0.149 the ring
+   sat 11% outside and the jacket hem hovered when the torso folded forward. */
+jointBall(spineHinge, 0.150*G_TORSO*1.15, COL_JACKET, [1.0, 0.92, TORSO_FLAT]);
+const chest = capsulePart(PROF_TORSO, TORSO_LEN, COL_JACKET, +1, 26, TORSO_FLAT);
+spineTwist.add(chest);
+
+/* Orange yoke: the same lathe profile a hair larger, clipped to the upper
+   torso, so the panel follows the body shape instead of being a can around it. */
+const PROF_YOKE = PROF_TORSO
+  .filter(([t]) => t >= 0.52)
+  .map(([t, r]) => [t, r * 1.012]);
+PROF_YOKE.unshift([0.52, 0.0]);
+const yoke = capsulePart(PROF_YOKE, TORSO_LEN, COL_YOKE, +1, 22, TORSO_FLAT);
+chest.add(yoke);
+
+/* Pale zip line down the front of the shell */
+const zip = new THREE.Mesh(new THREE.BoxGeometry(0.020, TORSO_LEN-0.14, 0.018),
+                           new THREE.MeshStandardMaterial({color:COL_TRIM, roughness:0.85}));
+zip.position.set(0, (TORSO_LEN-0.14)/2 + 0.02, 0.152);
+chest.add(zip);
+
+/* Shoulder girdle sits at the TOP of the torso */
+const shoulderGirdle = new THREE.Group();
+shoulderGirdle.position.set(0, TORSO_LEN, 0);
+chest.add(shoulderGirdle);
+
+const neck = new THREE.Group();
+neck.rotation.order = 'YXZ';       // same reason as the spine: gaze is a clean yaw
+/* Head sized from anthropometry rather than by eye, and the neck set so the
+   CROWN lands at shoulder height + 0.182 H.
+   Worth stating plainly: the previous 0.87 was my mistake. I derived it from a
+   stature I had computed wrongly (164.9 cm instead of 184), so a head that was
+   about right got shrunk ~13%. Driving it off HEAD_HEIGHT removes the judgement
+   call entirely. */
+const SKULL_RAW_H   = 2 * 0.112 * 1.06;        // head sphere, before any scale
+const SKULL_RAW_TOP = 0.145 + 0.112 * 1.06;    // crown above the neck pivot
+const SKULL_SCALE   = HEAD_HEIGHT / SKULL_RAW_H;
+const NECK_RISE     = SHOULDER_TO_CROWN - SKULL_RAW_TOP * SKULL_SCALE;
+neck.position.set(0, NECK_RISE, 0);
+shoulderGirdle.add(neck);
+/* Collar comes up around the neck the way a ski jacket does, so there is no
+   bare gap between the helmet and the shell. */
+/* Collar spans from 2 cm INSIDE the torso top to just under the chin. The
+   neck pivot moved up to NECK_RISE when the head was sized from anthropometry,
+   and a collar that was still 10.5 cm tall and centred at 0.046 left 6 cm of
+   air between the jacket and the head. */
+const COLLAR_BOTTOM = -NECK_RISE - 0.02;      // in the neck frame
+const COLLAR_TOP    = 0.10;
+const neckCol = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.070, 0.092, COLLAR_TOP - COLLAR_BOTTOM, 16),
+  new THREE.MeshStandardMaterial({color:COL_JACKET, roughness:0.78}));
+neckCol.position.y = (COLLAR_TOP + COLLAR_BOTTOM) / 2;
+neck.add(neckCol);
+/* Everything above the collar hangs off this, so the whole head — skull, jaw,
+   helmet, goggles, gaiter — scales as one piece, off SKULL_SCALE above.
+   `head` itself stays the gaze reference. */
+const skull = new THREE.Group();
+skull.scale.setScalar(SKULL_SCALE);
+neck.add(skull);
+/* Skull is taller than it is wide and deeper than it is broad */
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.112,20,16),
+                            new THREE.MeshStandardMaterial({color:COL_SKIN, roughness:0.62}));
+head.scale.set(0.93, 1.06, 1.00);
+head.position.set(0, 0.145, 0.004);
+skull.add(head);
+/* Jaw, so the profile is not a perfect ball */
+const jaw = new THREE.Mesh(new THREE.SphereGeometry(0.082,16,12),
+                           new THREE.MeshStandardMaterial({color:COL_SKIN, roughness:0.62}));
+jaw.scale.set(0.90, 0.74, 0.98);
+jaw.position.set(0, 0.093, 0.026);
+skull.add(jaw);
+/* ---- Helmet: matte charcoal, low over the ears, as in the reference ---- */
+const helmetMat = bodyMat(COL_HELMET, {rough:0.42, metal:0.10, envI:0.35});
+const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.133,26,18,0,Math.PI*2,0,Math.PI*0.70), helmetMat);
+helmet.scale.set(1.00, 1.04, 1.05);
+helmet.position.set(0, 0.150, -0.004);
+skull.add(helmet);
+/* Ear pads drop further down than before — in the photo the shell covers the
+   ear completely and meets the goggle strap. */
+[-1,1].forEach(s=>{
+  const ear = new THREE.Mesh(new THREE.SphereGeometry(0.056,14,12), helmetMat);
+  ear.scale.set(0.46, 1.00, 0.86);
+  ear.position.set(s*0.121, 0.098, -0.006);
+  skull.add(ear);
+});
+/* Small peak over the brow, which is what stops a helmet reading as a bowl */
+const brim = new THREE.Mesh(new THREE.TorusGeometry(0.129, 0.012, 8, 24, Math.PI*0.95), helmetMat);
+brim.rotation.set(Math.PI/2, 0, Math.PI*0.525);
+brim.position.set(0, 0.152, 0.004);
+skull.add(brim);
+
+/* ---- Goggles: one wide wrapped lens, not a band ----
+   The reference is a single large cylindrical lens covering brow to cheekbone,
+   so this is a piece of a cylinder bent around the face rather than a torus
+   tube. A torus reads as a strap with a shiny edge; the mass of blue IS the
+   feature here. */
+const lensMat = new THREE.MeshStandardMaterial({
+  color: COL_LENS, roughness: 0.055, metalness: 0.92,
+  envMap: envTex, envMapIntensity: 2.4
+});
+const lens = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.121, 0.121, 0.083, 28, 1, true, -Math.PI*0.46, Math.PI*0.92),
+  lensMat);
+lens.scale.set(1.0, 1.0, 0.80);            // flatter front-to-back, like a real lens
+lens.position.set(0, 0.126, 0.012);
+skull.add(lens);
+/* Dark frame around the lens so it sits IN the face instead of floating on it */
+const frameMat = bodyMat(0x101217, {rough:0.55, metal:0.05});
+[[0.0455, 0.129], [-0.0455, 0.129]].forEach(([dy, rr])=>{
+  const f = new THREE.Mesh(
+    new THREE.CylinderGeometry(rr, rr, 0.014, 28, 1, true, -Math.PI*0.46, Math.PI*0.92), frameMat);
+  f.scale.set(1.0, 1.0, 0.80);
+  f.position.set(0, 0.126 + dy, 0.012);
+  skull.add(f);
+});
+/* Strap runs from the lens edges around the back of the helmet */
+const strap = new THREE.Mesh(new THREE.TorusGeometry(0.128, 0.017, 8, 26, Math.PI*1.15),
+                             bodyMat(COL_STRAP, {rough:0.88, fabric:true}));
+strap.rotation.set(Math.PI/2, 0, -Math.PI*0.575);
+strap.position.set(0, 0.128, -0.002);
+skull.add(strap);
+
+/* ---- Neck gaiter over the lower face, as in the action photo ---- */
+const gaiterMat = bodyMat(0x1b1f27, {rough:0.86, fabric:true});
+const gaiter = new THREE.Mesh(new THREE.SphereGeometry(0.086,18,14), gaiterMat);
+gaiter.scale.set(0.95, 0.80, 1.02);
+gaiter.position.set(0, 0.088, 0.024);
+skull.add(gaiter);
+const gaiterTube = new THREE.Mesh(new THREE.CylinderGeometry(0.079, 0.093, 0.085, 18), gaiterMat);
+gaiterTube.position.set(0, 0.044, 0.006);
+skull.add(gaiterTube);
+
+/* --- Arms hang DOWN from the shoulder girdle --- */
+const POLE_LEN = 1.15;
+function buildArm(sideSign){
+  const shoulder = new THREE.Group();
+  /* Biacromial breadth runs about 0.245 of stature; at 0.185 a side this figure
+     measured 0.220, i.e. 15% narrow, which reads as a big head on small
+     shoulders. The upper arm was short by a similar margin (0.28 against the
+     0.31 that ratio wants). */
+  shoulder.position.set(sideSign*BIACROMIAL/2, -0.02, 0);
+  shoulderGirdle.add(shoulder);
+  /* Deltoid cap. Not girth-scaled: it has to reach from the joint back INTO the
+     torso, and after the rescale the old ball only touched the torso at one
+     point. Squashed so it reads as a shoulder, not a ball on a stick. */
+  jointBall(shoulder, 0.098, COL_YOKE, [1.10, 0.86, 0.96]);
+  const upperArm = capsulePart(PROF_UPPERARM, UPPERARM_LEN, COL_JACKET, -1, 20);
+  shoulder.add(upperArm);
+  /* Orange carries over the deltoid and a little way down the sleeve, cut from
+     the same profile so it hugs the arm. */
+  const PROF_SLEEVE = PROF_UPPERARM
+    .filter(([t]) => t <= 0.30)
+    .map(([t, r]) => [t, r * 1.02]);
+  PROF_SLEEVE.push([0.30, 0.0]);
+  const sleeveTop = capsulePart(PROF_SLEEVE, 0.28, COL_YOKE, -1, 16);
+  upperArm.add(sleeveTop);
+
+  const elbow = new THREE.Group();
+  elbow.position.set(0,-UPPERARM_LEN,0);
+  upperArm.add(elbow);
+  /* Sized to the forearm's START radius (0.062), not the upper arm's end —
+     the ball must be at least as fat as the fatter of the two limbs it joins or
+     the fatter one shows a step at the bend. */
+  jointBall(elbow, 0.064*G_ARM, COL_JACKET);
+  const forearm = capsulePart(PROF_FOREARM, FOREARM_LEN, COL_JACKET, -1, 20);
+  elbow.add(forearm);
+  const wrist = new THREE.Group();
+  wrist.position.set(0,-FOREARM_LEN,0);
+  forearm.add(wrist);
+  /* Mitt: a squashed ball, longer than it is thick, wrapped around the grip */
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055,14,10),
+                              new THREE.MeshStandardMaterial({color:COL_GLOVE, roughness:0.85}));
+  hand.scale.set(0.88, 1.25, 1.0);
+  hand.position.y = -0.018;
+  wrist.add(hand);
+  /* Pole: gripped at the hand, most of the shaft below, tip trailing behind.
+     Its angle is re-set each frame so the tip stays near the snow. */
+  const pole = new THREE.Group();
+  wrist.add(pole);
+  const poleShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.013,0.010,POLE_LEN,6), new THREE.MeshStandardMaterial({color:0x24272e, metalness:0.5, roughness:0.45}));
+  poleShaft.position.y = 0.10 - POLE_LEN/2;
+  pole.add(poleShaft);
+  const basket = new THREE.Mesh(new THREE.TorusGeometry(0.042,0.011,6,10), new THREE.MeshStandardMaterial({color:0x333333}));
+  basket.position.y = 0.10 - POLE_LEN + 0.09; basket.rotation.x = Math.PI/2;
+  pole.add(basket);
+  return {shoulder, upperArm, elbow, forearm, wrist, pole};
+}
+const armL = buildArm(1);
+const armR = buildArm(-1);
+
+/* --- Legs hang DOWN from the pelvis --- */
+function buildLeg(sideSign){
+  const hip = new THREE.Group();
+  hip.position.set(sideSign*HIP_HALF_WIDTH, -HIP_DROP, 0);
+  pelvis.add(hip);
+  /* Balls sized to the limb radius at each pivot: thigh is 0.101 at the hip and
+     0.078 at the knee, shin 0.086 at the knee. Slightly wider than deep at the
+     knee, which is the shape a bent knee actually has under a trouser leg. */
+  jointBall(hip, 0.104*G_THIGH, COL_PANTS);
+  const thigh = capsulePart(PROF_THIGH, THIGH_LEN, COL_PANTS, -1, 22);
+  hip.add(thigh);
+  const knee = new THREE.Group();
+  knee.position.set(0,-THIGH_LEN,0);
+  thigh.add(knee);
+  jointBall(knee, 0.084*G_THIGH, COL_PANTS, [1.04, 1.0, 1.10]);
+  const shin = capsulePart(PROF_SHIN, SHIN_LEN, COL_PANTS, -1, 22);
+  knee.add(shin);
+  const ankle = new THREE.Group();
+  ankle.position.set(0,-SHIN_LEN,0);
+  shin.add(ankle);
+  jointBall(ankle, 0.054*G_SHIN, COL_PANTS);     // mostly inside the boot cuff
+  /* Ski boot: a rounded shell with a raked cuff, not a rectangle.
+     Grouped so it scales with the figure. Foot length is 0.152 H, and the boot
+     was drawn for a much larger skier — its sole hung 16.6 cm below the ankle,
+     which is more than the whole ankle-to-snow stack should be. */
+  const boot = new THREE.Group();
+  boot.scale.setScalar(BOOT_SCALE);
+  ankle.add(boot);
+  const bootMat = new THREE.MeshStandardMaterial({color:COL_BOOT, roughness:0.38, metalness:0.08});
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), bootMat);
+  shell.scale.set(0.68, 0.80, 1.42);            // long fore-aft, narrow across
+  shell.position.set(0, -0.082, 0.022);
+  boot.add(shell);
+  const toe = new THREE.Mesh(new THREE.SphereGeometry(0.072, 14, 10), bootMat);
+  toe.scale.set(0.88, 0.62, 1.05);
+  toe.position.set(0, -0.108, 0.118);
+  boot.add(toe);
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.086, 0.096, 0.17, 14), bootMat);
+  cuff.position.set(0, 0.018, -0.012);
+  cuff.rotation.x = -0.17;                       // boots lean forward
+  boot.add(cuff);
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.016, 0.05),
+                                new THREE.MeshStandardMaterial({color:0x585d66, roughness:0.35, metalness:0.5}));
+  buckle.position.set(0, -0.03, 0.082);
+  boot.add(buckle);
+
+  /* Ski: boot mounted near the middle (tip a little longer than the tail) */
+  const skiGroup = new THREE.Group();
+  skiGroup.position.set(0,-ANKLE_TO_SKI,0);
+  ankle.add(skiGroup);
+  const ski = new THREE.Mesh(new THREE.BoxGeometry(0.11,0.03,SKI_LEN), new THREE.MeshStandardMaterial({color:COL_SKI_TOP, roughness:0.3, metalness:0.2}));
+  ski.position.set(0,0,SKI_MOUNT_OFFSET);
+  const skiBase = new THREE.Mesh(new THREE.BoxGeometry(0.112,0.008,SKI_LEN), new THREE.MeshStandardMaterial({color:COL_SKI_BASE, roughness:0.5}));
+  skiBase.position.set(0,-0.019,SKI_MOUNT_OFFSET);
+  const tip = new THREE.Mesh(new THREE.BoxGeometry(0.10,0.028,0.22), new THREE.MeshStandardMaterial({color:COL_SKI_TOP, roughness:0.3, metalness:0.2}));
+  tip.position.set(0, 0.035, SKI_MOUNT_OFFSET + SKI_LEN/2 + 0.08);
+  tip.rotation.x = -0.42;   // upturned shovel
+  /* Binding plate under the boot, so sole and topsheet are joined by
+     something solid rather than by hope. Toe and heel pieces rise a little
+     higher than the plate. */
+  const bindMat = new THREE.MeshStandardMaterial({color:0x22252c, roughness:0.45, metalness:0.35});
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.080, BINDING_H, 0.30), bindMat);
+  plate.position.set(0, SKI_TOP + BINDING_H/2, 0.03);
+  const toePiece = new THREE.Mesh(new THREE.BoxGeometry(0.086, BINDING_H+0.022, 0.06), bindMat);
+  toePiece.position.set(0, SKI_TOP + (BINDING_H+0.022)/2, 0.16);
+  const heelPiece = new THREE.Mesh(new THREE.BoxGeometry(0.086, BINDING_H+0.030, 0.06), bindMat);
+  heelPiece.position.set(0, SKI_TOP + (BINDING_H+0.030)/2, -0.10);
+  skiGroup.add(ski, skiBase, tip, plate, toePiece, heelPiece);
+  return {hip, thigh, knee, shin, ankle, skiGroup};
+}
+const legL = buildLeg(1);
+const legR = buildLeg(-1);
+
+skier.traverse(o=>{ if(o.isMesh){ o.castShadow = true; } });
+scene.add(skier);
+
+/* COG marker + the "stacking line" from the centre of gravity down to the
+   OUTSIDE ski — this is the line the lesson is actually about. */
+const cogMarker = new THREE.Mesh(new THREE.SphereGeometry(0.06,12,12), new THREE.MeshStandardMaterial({color:0xffcf4f, emissive:0xffaa00, emissiveIntensity:0.6}));
+skier.add(cogMarker);
+const cogLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const cogLine = new THREE.Line(cogLineGeo, new THREE.LineBasicMaterial({color:0xffcf4f}));
+skier.add(cogLine);
+
+/* ============================================================
+   SKI TRACKS IN THE SNOW
+   Sampled by actually posing the rig along the run, so the marks sit exactly
+   where the edges are, inside-ski lead included.
+
+   These are meant to be READ, not to label anything, so nothing here is
+   colour-coded. Three real quantities from the model drive the shape:
+
+     edge angle  -> WIDTH.  On edge the ski slices a narrow clean line; flat,
+                    it smears a wide brushed swath. This is what tells you
+                    whether the ski was carving or sliding.
+     ski load    -> DEPTH.  A loaded ski cuts; an unweighted one barely marks
+                    the snow. Watching one track fade as the other deepens is
+                    the weight transfer.
+     both        -> the cross-section itself: a sharp trench with snow pushed
+                    up either side when carving, a flat scuff when skidding.
+
+   Honest limit: width and depth are derived from the demo's own edge angle and
+   pressure, not from simulating snow. The track tells you what THIS model is
+   doing — it is not evidence about snow mechanics.
+============================================================ */
+/* Raised with the run so the grooves keep roughly the same detail per metre
+   (was 1400 over 212 m; now 2000 over ~370 m). Deliberately NOT scaled fully:
+   this array is rebuilt whole, and the rebuild is the most expensive thing in
+   the app at ~240 ms. */
+const TRACK_SAMPLES = 2000;
+/* lip | wall | -- trench floor -- | wall | lip.
+   The floor needs real width: with a single centre vertex the dark colour gets
+   interpolated away to nothing and the track reads as a faint scratch. */
+const LANE_U     = [-1, -0.68, -0.30, 0, 0.30, 0.68, 1];
+const LANE_KIND  = [ 0,  1,     2,    2, 2,    1,    0];   // 0 lip, 1 wall, 2 floor
+const TRACK_LANES = LANE_U.length;
+/* Scale sanity, against a ski that is 0.11 m wide:
+   Carving, only the steel edge is in the snow, so the cut has to come out
+   NARROWER than the ski — a pencil line of roughly 4 cm including the little
+   shoulders of snow beside it. Anything approaching ski width is not a carve,
+   it is the whole base sunk in.
+   Skidding, the ski is pushed sideways and shoves snow across a band WIDER
+   than itself, but 30-ish cm, not a metre. */
+const CARVE_HALF_W = 0.021;              // ~4 cm total: on edge, narrow and deep
+const SKID_HALF_W  = 0.155;              // ~31 cm total: flat, wide and shallow
+/* Ski edge angle treated as "fully engaged". 35 deg is where a modern ski is
+   genuinely carving, and it is also about where the closed parallel demo peaks,
+   so that demo's tracks come out exactly as tuned. A wedge sits near 14 deg and
+   therefore lands in the wide, shallow, brushed part of the range — which is
+   the honest answer for a wedge. */
+const EDGE_FULL = THREE.MathUtils.degToRad(35);
+const TRACK_LIFT = 0.006;
+let trackGroup = null, trackGeos = [];
+
+function rebuildCarvedTracks(){
+  if(trackGroup){
+    trackGroup.traverse(o=>{
+      if(o.geometry) o.geometry.dispose();
+      if(o.material) o.material.dispose();   // one fresh material per ski per rebuild
+    });
+    scene.remove(trackGroup);
+  }
+  trackGroup = new THREE.Group();
+  trackGeos = [];
+
+  const legs = [legL, legR];
+  const N = TRACK_SAMPLES, V = N*TRACK_LANES;
+  const pos = [new Float32Array(V*3), new Float32Array(V*3)];
+  const col = [new Float32Array(V*3), new Float32Array(V*3)];
+  const centre = new THREE.Vector3(), across = new THREE.Vector3();
+  const along = new THREE.Vector3(), perpT = new THREE.Vector3();
+
+  /* Snow base, the shadow inside a cut, and the sunlit crest of snow thrown up
+     beside it. A real carved track reads as bright-DARK-bright, not just a
+     dark line, and that signature is what makes it legible at a distance. */
+  const SNOW = [0.867, 0.910, 0.965];
+  const TRENCH = [0.360, 0.450, 0.610];
+  const HILITE = [0.985, 0.992, 1.000];
+
+  for(let i=0;i<N;i++){
+    const t = i/(N-1);
+    updateSkierPose(t);
+    skier.updateMatrixWorld(true);
+
+    /* Read the load the pose just MEASURED, not a phase proxy.
+       This used to recompute bank = cos(u) — the unshaped sinusoid, out of
+       phase with the turn actually being skied — and then take load as
+       0.5 + swing*commit, which is a function of phase only. That drew a wedge
+       with 88% on the outside ski while the lever rule (and the HUD) said 50%.
+       The grooves now show exactly what the gauge shows. */
+    const outsideIsRight = poseInfo.outsideIsRight;
+    /* Display gain: the measured split is honest but sits in 50-75%, which
+       drew both grooves nearly alike. Stretching about 50% keeps the contrast
+       legible at a distance without inventing load that is not there — a 50%
+       reading still draws two equal grooves. */
+    const GAIN = 1.8;
+    const loadOutside = THREE.MathUtils.clamp(0.5 + (poseInfo.loadOut - 0.5)*GAIN, 0, 1);
+    /* Transverse axis of the groove is perpendicular to TRAVEL, not to the
+       ski. A ski yawed to its direction of travel — every ski in a wedge, and
+       the whole point of a side-slip — scrapes a swath as wide as its projected
+       length, not a thin line down its own centre. */
+    perpT.set(1,0,0).transformDirection(skier.matrixWorld); perpT.y = 0; perpT.normalize();
+
+    for(let k=0;k<2;k++){
+      const g = legs[k].skiGroup;
+      centre.set(0, -0.023, SKI_MOUNT_OFFSET);
+      g.localToWorld(centre);
+      across.set(1,0,0).transformDirection(g.matrixWorld);
+      along.set(0,0,1).transformDirection(g.matrixWorld); along.y = 0; along.normalize();
+      /* projected half-extent of the ski onto the travel-perpendicular */
+      const yawSpread = Math.abs(along.dot(perpT)) * SKI_LEN * 0.5;
+
+      /* Edge angle MEASURED off the posed ski, not inferred from body lean.
+         Tilt of the ski's lateral axis out of the slope plane is exactly the
+         edge angle, so `across . slopeNormal` is sin(edge).
+         This has to be measured rather than assumed, because a wedge stands on
+         both inside edges with the body barely leaning at all — reading the
+         edge off the body would have drawn a wedge as two flat skis and the
+         tracks would have lied about the one thing they exist to show. */
+      const edge = THREE.MathUtils.clamp(
+        Math.asin(THREE.MathUtils.clamp(Math.abs(across.dot(SLOPE_NORMAL)),0,1)) / EDGE_FULL,
+        0, 1);
+
+      across.y = 0; across.normalize();
+      const baseY = heightAt(centre.z) + TRACK_LIFT;
+
+      /* Weight on THIS ski: even at the edge change, hard onto the outside
+         ski through the fall line. A wedge transfers less decisively than a
+         parallel turn, which is why the swing is a technique parameter. */
+      const isOutside = (k===1) === outsideIsRight;
+      const load = isOutside ? loadOutside : 1 - loadOutside;
+
+      /* Width and depth move in OPPOSITE directions with edge angle. Flat, the
+         ski displaces snow over a wide band but barely sinks; on edge it puts
+         the same load through a fraction of the width and knifes in. `edge` is
+         squared for the depth term so the deepening is concentrated where the
+         ski is genuinely on its edge rather than creeping in early. */
+      const halfW  = SKID_HALF_W + (CARVE_HALF_W - SKID_HALF_W)*edge + yawSpread;
+      const cut    = load * (0.16 + 0.84*edge*edge);   // how deep the mark is
+      /* A carved groove in groomed snow is roughly 1 cm deep. 3 cm of relief
+         is powder, and it made the track read as a rope laid on the surface
+         rather than a cut into it. */
+      const relief = 0.012 * load * edge * edge;       // crests only exist when carving
+
+      for(let j=0;j<TRACK_LANES;j++){
+        const uu = LANE_U[j], kind = LANE_KIND[j];
+        const o = (i*TRACK_LANES + j)*3;
+        pos[k][o  ] = centre.x + perpT.x*uu*halfW;
+        pos[k][o+2] = centre.z + perpT.z*uu*halfW;
+        /* Floor sits low, walls are the snow pushed up out of the cut, the
+           outer lip settles back to the surface. */
+        const height = (kind===2) ? 0 : (kind===1 ? 1 : 0.3);
+        pos[k][o+1] = baseY + height*relief;
+
+        /* Signed tone: negative cuts a shadowed slot, positive is snow piled
+           up catching the sun. Carving gives bright-dark-bright; skidding is a
+           uniformly duller scuff with no crest at all. */
+        const carveTone = (kind===2) ? -1.00 : (kind===1 ? +0.60 : +0.14);
+        const skidTone  = (kind===0) ? -0.05 : -0.14;   // a shallow scuff, no slot
+        const tone = cut * (skidTone + (carveTone - skidTone)*edge);
+        const target = tone < 0 ? TRENCH : HILITE;
+        const amt = Math.abs(tone);
+        for(let ch=0; ch<3; ch++){
+          col[k][o+ch] = SNOW[ch] + (target[ch] - SNOW[ch]) * amt;
+        }
+      }
+    }
+  }
+
+  const index = [];
+  for(let i=0;i<N-1;i++){
+    for(let j=0;j<TRACK_LANES-1;j++){
+      const a = i*TRACK_LANES + j,       b = a+1;
+      const c = (i+1)*TRACK_LANES + j,   d = c+1;
+      index.push(a,c,b, b,c,d);
+    }
+  }
+
+  for(let k=0;k<2;k++){
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos[k], 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col[k], 3));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    geo.setDrawRange(0,0);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.95, metalness: 0.0,
+      polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
+    }));
+    mesh.renderOrder = 1;
+    trackGroup.add(mesh);
+    trackGeos.push(geo);
+  }
+  scene.add(trackGroup);
+}
+
+/* Snow only holds a track where the skier has already been, so the mesh is
+   revealed behind them and there is nothing ahead. Each sample step spans
+   (TRACK_LANES-1) quads = 2 triangles each = 6 indices per quad. */
+const INDICES_PER_STEP = (TRACK_LANES - 1) * 6;
+function updateTrackReveal(progress){
+  const steps = Math.max(0, Math.floor(progress * (TRACK_SAMPLES - 1)));
+  for(const g of trackGeos) g.setDrawRange(0, steps * INDICES_PER_STEP);
+}
+
+/* ============================================================
+   CAMERA RIG
+============================================================ */
+/* Every view is a draggable orbit around the skier, not a fixed camera.
+   A preset only decides where the orbit STARTS and whether it is locked to the
+   skier's heading. `azim` is measured from the skier's forward direction, so
+   0 = in front (face on), PI = behind (chase).
+   Each view keeps its own adjustment, so switching away and back returns you to
+   the framing you set rather than resetting it. */
+const VIEW_PRESETS = {
+  follow: {dist: 7.2,  azim: Math.PI,        elev: 0.30, headingLocked:true,  targetY:1.05},
+  front:  {dist: 7.6,  azim: 0,              elev: 0.22, headingLocked:true,  targetY:1.10},
+  side:   {dist: 7.2,  azim: Math.PI/2,      elev: 0.18, headingLocked:true,  targetY:1.00},
+  top:    {dist: 38,   azim: Math.PI,        elev: 1.32, headingLocked:false, targetY:0.60},
+  free:   {dist: 9.5,  azim: Math.PI*0.78,   elev: 0.38, headingLocked:false, targetY:1.05}
+};
+const viewState = {};
+for(const k in VIEW_PRESETS){
+  viewState[k] = Object.assign({pan:new THREE.Vector3()}, VIEW_PRESETS[k]);
+}
+function resetView(mode){
+  const p = VIEW_PRESETS[mode];
+  Object.assign(viewState[mode], p);
+  viewState[mode].pan.set(0,0,0);
+}
+
+let viewMode = 'follow';
+let camSnap = true;                     // jump the camera into place instead of easing in
+const camFollow = new THREE.Vector3();   // smoothed orbit centre, see updateCamera
+const camTmpPos = new THREE.Vector3();
+const camTmpTarget = new THREE.Vector3();
+const _camFwd = new THREE.Vector3();
+const _camYaw = new THREE.Quaternion();
+const ELEV_MIN = -0.25, ELEV_MAX = 1.45;
+
+function updateCamera(skierPos, skierQuat, dt){
+  const v = viewState[viewMode];
+
+  /* Follow the skier's HEADING only, not their full slope-aligned orientation.
+     Using the tilted frame makes an offset along local +Z ride the slope
+     downwards -- it put the front camera 1.2 m BELOW the skier on a 17 deg
+     pitch. Yaw-only keeps every view level and framed the same on any slope. */
+  _camFwd.set(0,0,1).applyQuaternion(skierQuat);
+  _camYaw.setFromAxisAngle(UP_Y, Math.atan2(_camFwd.x, _camFwd.z));
+
+  const ce = Math.cos(v.elev), se = Math.sin(v.elev);
+  camTmpPos.set(v.dist*ce*Math.sin(v.azim), v.dist*se, v.dist*ce*Math.cos(v.azim));
+  camTmpTarget.set(0, v.targetY, 0).add(v.pan);
+  if(v.headingLocked){
+    camTmpPos.applyQuaternion(_camYaw);
+    camTmpTarget.applyQuaternion(_camYaw);
+  }
+  /* Smooth the POINT being orbited, not the camera.
+     This used to ease `camera.position` toward its target while lookAt() aimed
+     at the un-lagged skier, so the camera trailed a couple of metres and then
+     looked back at them — and as the skier changed direction that lag swung
+     round with them. In the two views that are meant to hold a fixed bearing
+     (top and free) it read as the camera slowly turning. Easing the orbit
+     centre instead keeps camera-to-target exactly equal to the offset, so an
+     unlocked view cannot rotate at all, and the motion is still smoothed. */
+  if(camSnap) camFollow.copy(skierPos);
+  else        camFollow.lerp(skierPos, viewMode === 'top' ? 0.06 : 0.14);
+  camTmpPos.add(camFollow);
+  camTmpTarget.add(camFollow);
+
+  /* Keep the camera above the snow. Offsetting sideways moves it up or down the
+     hill, and now that turns finish right across the fall line the side view
+     would otherwise end up buried under the piste looking at its back face. */
+  const floorY = heightAt(camTmpPos.z) + 1.1;
+  if(camTmpPos.y < floorY) camTmpPos.y = floorY;
+
+  camSnap = false;
+  camera.position.copy(camTmpPos);
+  camera.lookAt(camTmpTarget);
+}
+
+document.querySelectorAll('#views button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('#views button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    viewMode = btn.dataset.view;
+    camSnap = true;
+    showToast('視角: ' + btn.textContent.trim() + ' — 可拖曳調整');
+  });
+});
+
+/* ---- Drag to orbit, right-drag / shift-drag to pan, wheel to zoom ----
+   Applies to EVERY view, not just the free one. */
+(function(){
+  const el = renderer.domElement;
+  let dragging = null, lastX = 0, lastY = 0;
+  const camRight = new THREE.Vector3(), camUp = new THREE.Vector3(), panDelta = new THREE.Vector3();
+
+  el.addEventListener('contextmenu', e => e.preventDefault());
+
+  el.addEventListener('pointerdown', e => {
+    dragging = (e.button === 2 || e.button === 1 || e.shiftKey) ? 'pan' : 'orbit';
+    lastX = e.clientX; lastY = e.clientY;
+    el.setPointerCapture(e.pointerId);
+    el.style.cursor = dragging === 'pan' ? 'move' : 'grabbing';
+  });
+
+  el.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    const v = viewState[viewMode];
+
+    if(dragging === 'orbit'){
+      v.azim -= dx * 0.006;
+      v.elev = THREE.MathUtils.clamp(v.elev + dy * 0.005, ELEV_MIN, ELEV_MAX);
+    } else {
+      /* Pan in screen space, then store it in whichever frame this view uses so
+         it stays put as the skier turns. */
+      camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+      const k = v.dist * 0.0016;
+      panDelta.copy(camRight).multiplyScalar(-dx*k).addScaledVector(camUp, dy*k);
+      if(viewState[viewMode].headingLocked){
+        panDelta.applyQuaternion(_camYaw.clone().invert());
+      }
+      v.pan.add(panDelta);
+    }
+    camSnap = true;                       // track the drag directly, no lag
+  });
+
+  function endDrag(e){
+    if(!dragging) return;
+    dragging = null;
+    el.style.cursor = 'grab';
+    if(e && e.pointerId !== undefined && el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  }
+  el.addEventListener('pointerup', endDrag);
+  el.addEventListener('pointercancel', endDrag);
+
+  el.addEventListener('wheel', e => {
+    e.preventDefault();
+    const v = viewState[viewMode];
+    v.dist = THREE.MathUtils.clamp(v.dist * Math.exp(e.deltaY * 0.0011), 1.6, 140);
+  }, {passive:false});
+
+  el.addEventListener('dblclick', () => {
+    resetView(viewMode);
+    camSnap = true;
+    showToast('已重設 ' + viewMode + ' 視角');
+  });
+
+  el.style.cursor = 'grab';
+})();
+
+/* ============================================================
+   ANIMATION STATE / TIMELINE
+============================================================ */
+let playing = true;
+let speed = 1;
+const UP_Y = new THREE.Vector3(0,1,0);
+let pathLenCache = null;
+
+function pathLength(){
+  if(!pathLenCache) pathLenCache = pathCurve.getLength();
+  return pathLenCache;
+}
+/* Speed along the snow, m/s, now owned by the technique: 8.5 m/s ~ 31 km/h for
+   a parallel carving pace, 3.8 m/s ~ 14 km/h for a wedge. It feeds straight
+   into the derived inclination, which is why a wedge comes out standing almost
+   upright without anyone dialling that in — at 3.8 m/s there is barely any
+   centripetal force to lean against.
+   Note this is speed ALONG THE ARC. With the turn finishing across the hill
+   the skier only descends v*cos(psi) — averaging about half of it — which is
+   exactly why closed turns control speed. */
+
+/* Gravity pulls hardest along the skis in the fall line and barely at all when
+   the skier is across the hill, so speed rises and falls within every turn.
+   Kept as a pure function of turn phase so scrubbing the timeline stays exact. */
+const SPEED_SWING = 0.30;
+function skierSpeed(commit){
+  return _P.speed * Math.sqrt(1 - SPEED_SWING + SPEED_SWING * 2 * commit);
+}
+
+const deg = THREE.MathUtils.degToRad;
+
+/* Bottom corners of a ski's base, in skiGroup space. Ground contact is solved
+   against these rather than the ski's origin so an edged ski rides on its edge
+   instead of cutting through the snow. */
+const SKI_CORNERS = [];
+for(const sx of [-0.056, 0.056])
+  for(const sz of [SKI_MOUNT_OFFSET - SKI_LEN/2, SKI_MOUNT_OFFSET + SKI_LEN/2])
+    SKI_CORNERS.push(new THREE.Vector3(sx, -0.023, sz));
+
+/* Turn a yaw joint until the part it carries reaches a world heading.
+   Needed because a yaw joint deep in the chain does NOT rotate about world
+   vertical: the pelvis inclination tips its axis by up to 40 degrees, and the
+   torso pitch tips it further. Measured, the gain from joint angle to world
+   heading came out at -0.83 at one sample — not 1, and not even positive — so
+   an "add the error and repeat" loop diverged, running the spine out to -296
+   degrees. Probing the gain first makes it a single exact step.
+   Heading convention is atan2(x, -z), the same one the path uses for psi. */
+const _vy = new THREE.Vector3();
+const _wrapPi = a => { while(a >  Math.PI) a -= 2*Math.PI;
+                       while(a < -Math.PI) a += 2*Math.PI; return a; };
+function solveYaw(joint, part, targetYaw, limit){
+  const read = () => {
+    skier.updateMatrixWorld(true);
+    _vy.set(0,0,1).transformDirection(part.matrixWorld);
+    return Math.atan2(_vy.x, -_vy.z);
+  };
+  const cap = limit === undefined ? Math.PI : limit;
+  const probe = 0.06;          // small: the gain swings between -1 and -4.3, so
+                               // a wide secant is a bad local derivative
+  /* Newton, not a single step. The gain is strongly non-linear — it steepens as
+     the pelvis inclination tips this joint's axis away from vertical — so one
+     secant step left 89 of 300 samples more than 5 deg off target, the worst by
+     76 deg. Three re-probed iterations converge because each one re-measures. */
+  for(let pass=0; pass<3; pass++){
+    const s0 = joint.rotation.y;
+    const y0 = read();
+    const err = _wrapPi(targetYaw - y0);
+    if(Math.abs(err) < 1e-4) break;
+    joint.rotation.y = s0 + probe;
+    const gain = _wrapPi(read() - y0) / probe;
+    /* Near-zero gain means the joint has lost authority over heading at this
+       pose (its axis has swung nearly horizontal); leave it rather than divide. */
+    joint.rotation.y = Math.abs(gain) < 0.15
+      ? s0
+      : THREE.MathUtils.clamp(s0 + err / gain, -cap, cap);
+  }
+  skier.updateMatrixWorld(true);
+}
+
+const _vc = new THREE.Vector3();
+/* Lowest base corner of ONE ski, in the slope-aligned rig frame. Per-ski,
+   because the two skis have to be planted independently — see the contact
+   solve in updateSkierPose. */
+function skiLowY(leg){
+  let lowest = Infinity;
+  for(const c of SKI_CORNERS){
+    _vc.copy(c);
+    leg.skiGroup.localToWorld(_vc);
+    skier.worldToLocal(_vc);
+    if(_vc.y < lowest) lowest = _vc.y;
+  }
+  return lowest;
+}
+/* Pitch of a ski out of the snow plane: + = tip up, - = tail up. */
+const _vsk = new THREE.Vector3();
+function skiPitch(leg){
+  _vsk.set(0,0,1).transformDirection(leg.skiGroup.matrixWorld);
+  return Math.asin(THREE.MathUtils.clamp(_vsk.dot(SLOPE_NORMAL), -1, 1));
+}
+/* Lay a ski flat ALONG ITS LENGTH.
+   `ankle.rotation.x = shinDir` only cancels pitch in the LEG's own frame. The
+   hip's angulation roll, the pelvis roll and the pelvis yaw all tip the ski
+   back out of the snow plane, so a tip or tail ended up 4.2 deg off the
+   snow — about 6 cm of air under the tip of a 1.7 m ski. Measured and nulled
+   with a probed gain, the same as the chest heading: the gain is not 1 and not
+   even constant, because the axis being rotated about is itself tilted. */
+function levelSki(leg){
+  const probe = 0.05;
+  for(let i = 0; i < 2; i++){
+    skier.updateMatrixWorld(true);
+    const p0 = skiPitch(leg);
+    if(Math.abs(p0) < 1e-4) break;
+    const s0 = leg.ankle.rotation.x;
+    leg.ankle.rotation.x = s0 + probe;
+    skier.updateMatrixWorld(true);
+    const gain = (skiPitch(leg) - p0) / probe;
+    leg.ankle.rotation.x = Math.abs(gain) < 0.2 ? s0 : s0 - p0 / gain;
+  }
+  skier.updateMatrixWorld(true);
+}
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _m1 = new THREE.Matrix4();
+const _q1 = new THREE.Quaternion(), _v3 = new THREE.Vector3();
+const _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3(), _q2 = new THREE.Quaternion();
+const _v6 = new THREE.Vector3(), _v7 = new THREE.Vector3(), _v8 = new THREE.Vector3();
+const _v9 = new THREE.Vector3(), _q3 = new THREE.Quaternion(), _q4 = new THREE.Quaternion();
+const _m2 = new THREE.Matrix4(), WORLD_UP = new THREE.Vector3(0,1,0);
+const POLE_AXIS = new THREE.Vector3(0,-1,0);
+
+/* Point a pole's shaft along `dir` expressed in the SKIER's local frame,
+   cancelling whatever rotations the arm chain above it has accumulated. */
+const POLE_TIP = POLE_LEN - 0.10;   // wrist -> tip along the shaft
+let P_poleBack = 0;
+function aimPole(pole, sideSign, plant, azi){
+  /* Aimed from the HAND HEIGHT, not by a fixed angle. A fixed down-and-back
+     direction did two unphysical things at once: with the hand ~70 cm above
+     the snow and 105 cm of shaft below it, the tip was 48 cm INTO the snow;
+     and with only 9 deg of outward splay the shaft ran through the shin and
+     thigh on its own side (measured 8 cm inside the leg).
+     Now: the shaft drops exactly far enough to put the tip 3 cm above the
+     snow, and whatever length is left over is laid back and OUT — the lower
+     the hand, the flatter and further out the pole, which is also what keeps
+     it clear of the boot. Out:back 0.65:0.55 — measured, 0.42 still ran the
+     shaft through the thigh in the fore/aft drill and put the tip on the ski
+     tail in a wide stem. */
+  pole.parent.getWorldPosition(_v3);
+  skier.worldToLocal(_v3);                          // skier frame: y = height above the snow
+  /* Pole plant: the shaft's AZIMUTH sweeps from trailing (out and back) to
+     planted (ahead of the boot, a hand's width outside the ski), and the tip
+     height eases from 6 cm afloat to on the snow. Azimuth and tip height are
+     blended separately and the drop re-solved from them — lerping the two
+     finished shaft vectors passed through a steeper middle and drove the tip
+     17 cm into the snow half way through the swing. */
+  plant = plant || 0; azi = azi === undefined ? plant : azi;
+  if(P_poleBack > 0 && plant === 0){
+    /* Carving: no plant, so the pole is simply carried — pointing back and a
+       little out, tip well clear of the snow. Only if the hand is very low
+       does the angle flatten to keep the tip 6 cm up. */
+    const cMax = Math.max(0, _v3.y - 0.06) / POLE_TIP;
+    const cb = Math.min(Math.sin(P_poleBack), cMax);
+    const sb = Math.sqrt(1 - cb*cb);
+    _v3.set(sideSign*0.30*sb, -cb, -0.954*sb);
+    _v3.applyQuaternion(skier.quaternion);
+    pole.parent.getWorldQuaternion(_q1);
+    _v3.applyQuaternion(_q1.invert()).normalize();
+    pole.quaternion.setFromUnitVectors(POLE_AXIS, _v3);
+    return;
+  }
+  _v4.set(sideSign*0.763, 0, -0.646);              // trailing: out:back = 0.65:0.55 normalised — past the ski tail
+  /* planted: toward the centre of the NEXT turn — at the edge change the skis
+     point ~65 deg across the hill, so 'downhill and ahead' is roughly 45 deg
+     out from the ski. 0.36 out put the tip 0.2 cm off the ski centreline. */
+  _v5.set(sideSign*0.72, 0, 0.694);
+  _v4.lerp(_v5, azi).normalize();
+  const tipUp = 0.06 * (1 - plant);
+  const drop = Math.max(0, _v3.y - tipUp);
+  /* A planted pole is never vertical: with the hand swung up to ~105 cm the
+     shaft hung straight down and the tip landed ON the inside ski (measured
+     2 cm off its centreline in the up/down drill). Capping the cosine at 0.90
+     keeps the tip 25 cm out and 38 cm ahead of the hand; if the hand is high
+     the tip floats a little rather than the shaft going through the ski. */
+  const c = THREE.MathUtils.clamp(drop / POLE_TIP, 0.12, 1.0 - 0.10*plant);   // cos(angle from vertical); floor 0.12 not 0.30 — at the deepest crouch the hand is under 40 cm up and 0.30 drove the trailing tip 1.7 cm into the snow
+  const sn = Math.sqrt(1 - c*c);
+  _v3.set(_v4.x*sn, -c, _v4.z*sn);
+  _v3.applyQuaternion(skier.quaternion);           // -> world
+  pole.parent.getWorldQuaternion(_q1);
+  _v3.applyQuaternion(_q1.invert()).normalize();   // -> pole's parent frame
+  pole.quaternion.setFromUnitVectors(POLE_AXIS, _v3);
+}
+
+function updateSkierPose(progress /*0..1 along path*/){
+  const P = styleParams();
+
+  /* ---------------------------------------------------------------
+     Turn phase is read from the ACTUAL path geometry rather than from a
+     free-running clock, so the body always leans into the arc it is
+     really travelling on.
+     centreline x = amp*sin(2*PI*d/lambda) : the first half-cycle curves
+     toward world -X, which is the skier's LEFT.
+  --------------------------------------------------------------- */
+  const pt = pathCurve.getPointAt(progress);
+  /* Phase comes from arc length, which is what the heading function is written
+     against. `progress` is arc-length normalised, and the slope pitch is
+     constant, so this mapping is exact. */
+  const u = 2*Math.PI * (progress * pathHorizLen) / cycleLen();
+
+  /* Everything lateral is driven by the path's own curvature.
+     psi = psiMax*sin(u)  ->  dpsi/ds = psiMax*(2PI/S)*cos(u)
+     so `bank` is exactly proportional to how hard the arc is turning. It is a
+     plain sinusoid: infinitely smooth, and it changes sign by itself at each
+     edge change instead of being switched by a branch. Peak bank lands on the
+     fall line and zero bank on the edge change, which is the real timing. */
+  const bank     = curvShape(u, P.linkSharp, P.turnSkew);  // +1 = right, -1 = left
+  const commit   = bank * bank;                    // 0 at the edge change, 1 at the fall line
+  const foreAftN = -Math.sin(2*u);                 // -1..1: fore early, aft late, 0 at the edge change
+  const foreAft  = P.foreAft * foreAftN;           // degrees, for the upper body
+  const pressure = commit;                         // 0 = released (減壓), 1 = max pressure (施壓)
+
+  /* ---------------- inclination, from actual physics ----------------
+     A carved turn balances gravity against centripetal force:
+         tan(lean) = v^2 / (R * g)
+     Curvature of psi = psiMax*sin(u) is  dpsi/ds = psiMax*(2PI/S)*cos(u),
+     and 1/R is exactly that. So the lean falls out of speed and turn shape
+     instead of being dialled in. Hand-setting it to 30 deg meant the body was
+     posed for 7.4 m/s while the animation ran at 4.5 m/s.
+     Still smooth: bank is a sinusoid through zero and atan is smooth. */
+  /* dpsi/ds where psi = psiMax*psiShape(u): the shaped curvature, normalised by
+     the same integral the table was normalised with, so this stays the exact
+     derivative of the line actually being skied. */
+  const kappa   = deg(P.psiMax) * (2*Math.PI / cycleLen()) * bank * _curvMax / _psiNorm;
+  const v       = skierSpeed(commit);
+  const leanRad = THREE.MathUtils.clamp(
+                    Math.atan(v * v * kappa / 9.81), -deg(P.maxLean), deg(P.maxLean));
+
+  const outsideIsRight = bank < 0;                 // banking LEFT puts the weight on the RIGHT ski
+
+  /* ---------------- place & orient along the slope ---------------- */
+  const tangent = pathCurve.getTangentAt(progress).normalize();
+  skier.position.copy(pt);
+  /* Basis built on the SLOPE NORMAL, so local +Y is exactly perpendicular to
+     the snow and the local y=0 plane is the snow plane. Everything downstream
+     — ground contact, keeping the skis flat — depends on that being true. */
+  _v1.copy(SLOPE_NORMAL).addScaledVector(tangent, -SLOPE_NORMAL.dot(tangent)).normalize();
+  _v2.crossVectors(_v1, tangent).normalize();      // local +X = skier's LEFT
+  _m1.makeBasis(_v2, _v1, tangent);                // local +Z = forward
+  skier.quaternion.setFromRotationMatrix(_m1);
+
+  /* ---------------- separation: the zipper line (拉鍊理論) ----------------
+     psi is the ski heading off the fall line. The skis swing the full +/-psiMax;
+     the CHEST must not follow, or the zipper stays square to the skis and the
+     turn is being steered with the shoulders. Countering by a fraction of psi
+     is exactly what makes the ski direction CROSS the zipper.
+
+     Note the phase. psi is largest at the EDGE CHANGE (the closed turn finishes
+     across the hill) and zero at the fall line. The old code scaled counter by
+     leanRad, which is the opposite: maximum at the fall line and zero at the
+     transition. So the separation was not merely too small, it peaked in the
+     wrong place — the upper body was most square to the skis at the one moment
+     it should have been most countered. */
+  const psi = deg(P.psiMax) * psiShape(u, P.turnSkew);
+  /* Sign verified by measurement, not by reasoning about the basis: a NEGATIVE
+     rotation.y here turned out to increase the world heading, so countering
+     needs the positive sense. With the sign inverted the chest measured 138 deg
+     while the skis were at 88 — the upper body wound up PAST the skis instead
+     of holding the fall line. */
+  /* ---------------- pole plant (點仗) timing ----------------
+     psi is largest at the edge change, so |psi|/psiMax is a clock that reads 1
+     exactly when the pole should touch. Whether the heading is still swinging
+     OUT (turn finishing: the hand swings forward) or already coming BACK (new
+     turn begun: let the pole go) is read from psi a little further on. The
+     planting hand is on the side the NEXT turn goes: skis pointing right
+     (psi > 0) means a left turn is next, so the LEFT hand plants. */
+  const psiN     = Math.abs(psi) / Math.max(1e-6, deg(P.psiMax));
+  const psiOut   = Math.abs(psiShape(u + 0.02, P.turnSkew)) > Math.abs(psiShape(u, P.turnSkew));
+  const _s5 = x => { x = THREE.MathUtils.clamp(x, 0, 1); return x*x*x*(x*(x*6 - 15) + 10); };
+  const plantAmt = P.polePlant * (psiOut ? _s5((psiN - P.plantStart) / (1 - P.plantStart))
+                                         : _s5((psiN - P.plantRelease) / (1 - P.plantRelease)));
+  const plantL = psi > 0 ? plantAmt : 0;
+  const plantR = psi > 0 ? 0 : plantAmt;
+  /* The slow swing: psi/psiMax runs -1..+1 over the two turns of a cycle and
+     peaks exactly where each hand plants, so it IS the hand's fore/aft phase.
+     +1 = the LEFT hand at its plant (skis pointing right, left turn next),
+     -1 = the left hand furthest back, which is the right hand's plant. */
+  const swingL = P.polePlant * psi / Math.max(1e-6, deg(P.psiMax));
+  const swingR = -swingL;
+  /* The pole tip swings forward with the hand (wrist), well before it drops. */
+  const aziL = THREE.MathUtils.clamp(0.45*Math.max(0, swingL) + 0.55*plantL, 0, 1);
+  const aziR = THREE.MathUtils.clamp(0.45*Math.max(0, swingR) + 0.55*plantR, 0, 1);
+  const counterTotal = psi * P.counter;
+  /* Where the chest is asked to face: the ski heading a little EARLIER in the
+     turn (it follows), less the residual counter. Same shape function as psi,
+     so the two never drift apart in phase. */
+  const psiLag = deg(P.psiMax) * psiShape(u - P.chestLag * Math.PI/2, P.turnSkew);
+  /* Side-slip (側滑): the skis sit across the line of travel while the chest
+     faces down it. That much rotation cannot all come from one joint — the
+     hips open part way toward the skis, the femurs rotate the rest in their
+     sockets, and the spine winds the chest back down the hill. slipHip is the
+     pelvis's share; the leg joints take the whole slip angle less that. */
+  const slipYaw   = deg(P.sideslip);
+  const pelvisYaw = counterTotal * P.counterPelvisShare + slipYaw * P.slipHip;
+  const spineYaw  = counterTotal * (1 - P.counterPelvisShare);
+
+  /* ---------------- hips: inclination (傾斜) ----------------
+     +rotation.z tips the body toward local -X = the skier's RIGHT. */
+  /* No fore/aft translation here: the pelvis carries the legs and skis with it,
+     so shifting it would slide the skis off the line. The hips-over-boots
+     relationship is owned by the leg IK below. */
+  pelvis.rotation.set(0, pelvisYaw, leanRad);
+  /* Hips travel laterally out over the loaded ski. Applied as equal and
+     opposite shifts of the pelvis and of the hip joints, so the centre of mass
+     moves but the FEET stay on the arc. bank > 0 is a right turn, whose outside
+     ski is the LEFT one at local +X. */
+  const hipShift = P.hipLateral * bank;
+  pelvis.position.x = hipShift;
+
+  /* ---------------- waist: angulation + the 反弓 ----------------
+     The upper body counter-tilts AWAY from the turn so the mass stacks over the
+     outside ski. But scaling that purely off leanRad left the torso square to
+     the SLOPE at every transition, because leanRad passes through zero there —
+     the "90 degrees to the hill" look.
+
+     So the torso is aimed at GRAVITY instead. upLocal is world up expressed in
+     the skier's frame; its lateral component is precisely how far the rig is
+     off vertical. It peaks at the transition, where the skis are across the
+     hill, and vanishes at the fall line — the right phase, and derived from the
+     slope rather than dialled in. Standing square to the hill while traversing
+     IS leaning into the mountain, which is the fault this removes. */
+  _v4.set(0,1,0).applyQuaternion(_q2.copy(skier.quaternion).invert());
+  const gravityTilt = -Math.atan2(_v4.x, _v4.y);
+  const torsoTilt = leanRad * (1 - P.angulation) + P.bowGravity * gravityTilt;
+  /* torsoOut: the upper body leans OVER the outside ski, by bank. This is how
+     weight goes to the outside ski in a wedge — the body is not inclined and
+     the hips barely move; the shoulders go across. Sign checked by
+     measurement: +rotation.z tips the chest toward -X, and the outside ski of
+     a right turn (bank > 0) is on +X, hence the minus. Zero for parallel. */
+  const torsoOut = -deg(P.torsoOut) * bank;
+  spineHinge.rotation.z = torsoTilt - leanRad + torsoOut;   // pelvis already carries leanRad
+  spineTwist.rotation.y = spineYaw;              // twist lives on its own node now
+
+  /* NOTE: the yaw is corrected to hit its world target further down, AFTER the
+     torso pitch is known — see "separation, closed by measurement". */
+
+  /* ---------------- legs ----------------
+     Outside leg long and loaded; inside leg folds up short. Flexion peaks at
+     the transition (減壓 / release) and extends through the apex (施壓). */
+  /* Up-unweighting: EXTEND tall at the edge change to release the skis (減壓),
+     then compress toward the fall line as pressure builds (施壓).
+     Phase matters. Extending at the fall line instead would fight the
+     inclination -- the lean already drops the hips there -- and the two cancel
+     out to almost no visible movement. In this phase they add. */
+  /* Release (企高) is a SHORT moment at the edge change, not a slow rise
+     through the whole low-curvature part of the arc: releaseWidth is the
+     |bank| below which the legs extend. commit = bank^2 gave a rise that
+     began at |bank| ~0.7, i.e. well before the turn was finished. With
+     linkSharp squaring the curvature, |bank| < 0.55 lasts ~0.25 s. */
+  const relW   = P.releaseWidth || 0;
+  const s5r    = x => { x = THREE.MathUtils.clamp(x, 0, 1); return x*x*x*(x*(x*6 - 15) + 10); };
+  /* Asymmetric: the RELEASE (standing up as the old turn finishes) is quick,
+     the PRESSURE (flexing back down into the new turn) is gradual — it builds
+     from the edge change all the way to the fall line. Which side of the
+     change we are on is read from whether |bank| is falling or rising. */
+  /* Pressure is timed off the HEADING (qh: -1 at the change, 0 at the fall
+     line, +1 at the next change), not the curvature — curvature squares up
+     in a fraction of a second, which made the flex nearly as quick as the
+     release. Upper half (qh < 0): flex builds with the heading. Lower half:
+     stay flexed, then the quick release as the curvature runs out. Both
+     branches are 1 at the fall line and 0 at the change, so the hand-over
+     is continuous — deciding the branch from the curvature's slope instead
+     flipped one sample early and dropped the pelvis 16 cm for a frame. */
+  const qh = _turnP(u).sg * psi / Math.max(1e-6, deg(P.psiMax));
+  const flexRelease  = s5r((Math.abs(bank) - 0.08) / relW);
+  const flexPressure = s5r((qh + 1) / (P.pressurePhase || 1.0));
+  const flexK  = relW > 0 ? (qh < 0 ? flexPressure : flexRelease) : commit;   // 0 = tall (released), 1 = flexed
+  const legDrop = P.legLong - (P.legLong - P.legShort) * flexK;  // hip above ankle, world vertical
+  /* Small standing bias forward so the cycle straddles the boot instead of
+     sitting entirely behind it. */
+  /* hipDrive: the PELVIS drives forward as the turn loads. In a steered wedge
+     the outside leg pushes the ski forward-and-in, and the power for that is
+     the hip coming through over the foot — not the foot reaching out from a
+     pelvis left behind. outsidePush alone did the latter: the foot went 10 cm
+     ahead and the hips sat behind it. Both legs' fore reference moves, so the
+     whole pelvis advances over the feet. */
+  const hipFore = P.hipForeBias + P.hipFore * foreAftN + P.hipDrive * commit;   // + = hips ahead of the boots
+
+  /* The split is scaled by `commit`, which is 0 at the edge change. That is what
+     lets the two legs swap roles without a jump: at the moment the outside ski
+     changes sides, both legs are posed identically. */
+  const outsideDrop = legDrop;
+  const insideDrop  = legDrop - P.legSplit * commit;
+
+  /* Inside-ski lead. The inside ski runs ahead of the outside one; the lead
+     swaps sides through the edge change. Driven by signed `bank` so it crosses
+     through zero smoothly rather than flipping. */
+  /* This used to slide the HIP JOINTS fore/aft by half the lead — which pulls
+     the thigh out of the pelvis (11 cm at skiLead 0.22, and it read as the
+     limbs coming apart). The hips stay in the pelvis; the lead is now a
+     fore/aft offset of each FOOT in the leg IK below. */
+  const leadZ = P.skiLead * bank * 0.5;             // bank > 0 = right turn = right ski inside
+  legR.hip.position.z = 0;
+  legL.hip.position.z = 0;
+
+  /* ---------------- the wedge (犁式 / 半犁式) ----------------
+     A wedge is made at the FEET, not at the hips: each ski yaws about its own
+     boot so the tails swing apart while the tips stay together, and each ski
+     rolls onto its INSIDE edge. Body lean can never produce that — lean tips
+     both skis the same way, a wedge tips them toward each other — which is why
+     this is a separate term rather than something scaled out of `leanRad`.
+
+     wFrac is how much of the V survives at this point in the turn.
+
+     It used to be 1 - wedgeClose*commit, and that had the stem christie doing
+     the WRONG thing: commit peaks at the fall line, so the V was closed AT the
+     fall line and then — because commit falls again — opened back up on the
+     way out. Measured: wFrac 1.00 at the edge change, 0.00 at the apex, 0.89
+     three-quarters of the way round. A stem christie stems at the initiation,
+     holds the V INTO and THROUGH the fall line, matches the inside ski once
+     past it, and stays parallel to the finish. That is a sequence in the turn,
+     so it is written against turn position p (-1 edge change in, +1 edge
+     change out), not against curvature:
+
+        stem out    p in [-1, -1+stemLen]      0 -> 1
+        hold        through the fall line       1
+        match       p in [matchStart, matchEnd] 1 -> 0
+        parallel    to the finish               0
+
+     At p = +1 it is 0 and at the next turn's p = -1 it starts from 0, so the
+     wrap is continuous. Smootherstep on both ramps so nothing snaps. A pure
+     wedge (wedgeClose = 0) skips all of it and holds the V. */
+  const tp = _turnP(u).p;
+  const s5 = x => { x = THREE.MathUtils.clamp(x, 0, 1); return x*x*x*(x*(x*6 - 15) + 10); };
+  const stemOpen  = s5((tp + 1) / P.stemLen);
+  const matchDone = s5((tp - P.matchStart) / (P.matchEnd - P.matchStart));
+  /* wedgeBreath is for the size-change drill only: a pure wedge that narrows
+     as the turn loads and reopens as it releases, never matching. */
+  const wFrac = P.wedgeClose > 0 ? stemOpen * (1 - matchDone)
+                                 : 1 - P.wedgeBreath * s5(commit);
+  /* bank > 0 = right turn = LEFT ski outside. wedgeAsym pushes the V onto that
+     ski, so the inside one comes parallel first — the "half" in half-plough. */
+  const gateL = 1 + P.wedgeAsym * bank;
+  const gateR = 1 - P.wedgeAsym * bank;
+  const halfWedge = deg(P.wedge) * 0.5 * wFrac;
+  /* +rotation.y swings a tip toward the skier's LEFT (+X), so the left ski
+     needs a negative yaw and the right ski a positive one to converge. */
+  /* The V is made by ROTATING THE FEMURS, not by twisting the ski at the foot.
+     It used to be applied here, on the ski group, which left both knees
+     pointing straight down the hill while the skis splayed under them. Moved
+     to hip.rotation.y (below) so the whole leg turns and the knee follows the
+     ski — which is also the only place the steering can be seen happening.
+
+     steer: a wedge turn is STEERED, not carved. Both femurs rotate into the
+     turn by `steer` x bank, so the whole V swings toward the turn centre: the
+     outside ski ends up well across the line of travel and skids round, while
+     the inside ski comes almost parallel to it. That skid angle is what the
+     grooves draw as a wide brushed swath. Zero for the parallel techniques,
+     which carve. Sign: +rotation.y swings a tip to the skier's LEFT, and a
+     right turn (bank > 0) wants both tips to the RIGHT. */
+  const steerYaw = -deg(P.steer) * bank;
+  /* The STATIC toe-in of the V lives below the knee (tibial rotation), so the
+     knees do not swing inward with it. Putting it at the femur on a leg flexed
+     to 50 deg swung each knee 14 cm toward the midline — an X-stance with the
+     knees touching. Only the dynamic steer is femur-driven. */
+  legL.skiGroup.rotation.y = -halfWedge * gateL;
+  legR.skiGroup.rotation.y =  halfWedge * gateR;
+  legL.skiGroup.position.set(0, -ANKLE_TO_SKI, 0);   // tips are levelled after the contact solve, below
+  legR.skiGroup.position.set(0, -ANKLE_TO_SKI, 0);
+  /* Feet apart, knees inside the feet — the A-frame a wedge stands in.
+     hipShift is subtracted straight back off, so displacing the pelvis over the
+     outside ski moves the body without dragging the feet off the line. */
+  /* The hip joints stay where the pelvis puts them. They used to be pulled
+     back by -hipShift so the feet would not move — which left the joints
+     behind while the pelvis mesh and torso slid across, and in a wedge (18 cm
+     of shift) one hip ended up 33 cm from the pelvis centre with the thigh
+     hanging in the open. The feet are now kept on the skis by angling the LEGS
+     (hipLean, below), which is what a body does.
+     `stance` used to widen the joints outward as well; it is folded into the
+     leg splay for the same reason. */
+  legL.hip.position.x =  HIP_HALF_WIDTH;
+  legR.hip.position.x = -HIP_HALF_WIDTH;
+  /* Undo the pelvis counter at the hip joints so the SKIS stay on the arc while
+     the pelvis faces further down the hill. This is femur rotation in the hip
+     socket, and it is the reason a countered stance does not steer the skis. */
+  legL.hip.rotation.y = -pelvisYaw + slipYaw + steerYaw;
+  legR.hip.rotation.y = -pelvisYaw + slipYaw + steerYaw;
+  const aframe = deg(P.aframe) * wFrac;
+
+  /* Roll about the ski's own long axis. +rotation.z lifts the +X side, which
+     for the LEFT ski puts it on its inside (right-hand) edge; mirrored for the
+     right ski. Both skis therefore stand on the edges facing each other.
+
+     The roll is specified RELATIVE TO THE SNOW, so whatever tilt the leg chain
+     has already handed down gets subtracted off first. Without that, the body
+     lean adds to one ski and cancels the other: measured at the turn apex the
+     inside ski came out at -2.8 deg, i.e. flat and starting to roll onto its
+     OUTSIDE edge, which is the one thing a wedge never does. A wedge's edge
+     angle is made at the ankle against the hill, not inherited from the torso.
+
+     Inherited roll = pelvis lean + the knee angulation and hip splay added in
+     poseLeg below. wedgeOn fades the whole correction out as the skis match, so
+     a wedge christie hands the edging back to inclination once it is parallel,
+     and the parallel techniques (skiRoll = wedge = 0) are untouched. */
+  /* ---------------- stance width ----------------
+     The skis were running 17-23 cm apart, near enough to touching. A real
+     stance is open — feet roughly hip-to-shoulder width — and that width is
+     made by angling the legs OUT from the hips, not by moving the hip joints,
+     which are fixed 17.5 cm apart by the pelvis.
+
+     Splaying at the hip also rolls the ski with the leg, which would corrupt
+     the edge angle, so the same angle is taken back out at the ski. Edging then
+     stays exactly what inclination and knee angulation say it is, and the width
+     is free to be set independently. */
+  /* Width BREATHES with the turn instead of being pinned. At the edge change the
+     body crosses over the skis, both legs are near equal length and the feet
+     come together; through the arc the inside leg folds and tips away under the
+     body and the stance opens. `commit` is 0 at the edge change and 1 at peak
+     curvature, which is exactly that shape — and because it is bank SQUARED its
+     derivative also vanishes at the edge change, so the width eases open rather
+     than stepping. */
+  const splayBase = deg(P.stanceSplay) + P.stance * wFrac / 0.60;
+  /* Inside leg moves toward the turn centre (its own side), outside leg
+     holds. Blended on bank (legR is the inside leg when bank > 0) so the
+     hand-over at the edge change is smooth; commit is bank^2, so the product
+     vanishes with its slope there. */
+  const toCentre = deg(P.stanceSwing) * commit;
+  const splayL = splayBase + toCentre * (1 - bank) * 0.5;
+  const splayR = splayBase + toCentre * (1 + bank) * 0.5;
+  /* hipLean (in poseLeg): same-sign roll on both legs that swings each foot
+     back by exactly -hipShift, so the pelvis can move over the outside ski
+     while the skis stay on the line. Computed PER LEG from that leg's own solved
+     length — with one shared angle the longer outside leg swung further than
+     the short inside one and the stance narrowed 3 cm. Taken back out at the
+     ski so edging is untouched. */
+  const roll    = deg(P.skiRoll) * wFrac;
+  const wedgeOn = (P.skiRoll > 0 || P.wedge > 0) ? wFrac : 0;
+  /* Knee angulation is stronger on the inside leg. Blended on `bank` rather
+     than switched on `outsideIsRight`: the branch steps by 0.10 the instant
+     bank crosses zero, and although leanRad is ~0 there so the pose does not
+     jump, the SLOPE does — and the edge change is exactly where the wedge
+     compensation below is at full strength, so the kink landed straight on the
+     ski. Measured 0.74 deg of second difference on the ski edge angle against
+     0.14 for the parallel demo. The blend agrees with the branch at both ends. */
+  const kneeL   = 0.06 + P.kneeIn * (1 - bank) * 0.5;  // legL is the inside leg when banking left
+  const kneeR   = 0.06 + P.kneeIn * (1 + bank) * 0.5;
+  /* A wedge rolls the two skis toward each other; a side-slip rolls them the
+     SAME way, both onto their uphill edges. slipEdge is that common roll, and
+     its sign follows which way the skis face so the edge that bites is always
+     the uphill one. */
+  const slipRoll = deg(P.slipEdge + P.slipEdgeSwing * commit) * Math.sign(slipYaw || 1);
+  const skiRollL =  roll * gateL - wedgeOn * (leanRad * (1 + kneeL) + aframe) - splayL + slipRoll;
+  const skiRollR = -roll * gateR - wedgeOn * (leanRad * (1 + kneeR) - aframe) + splayR + slipRoll;
+
+  /* Two-link IK: place the FOOT relative to the hip, then solve the joint
+     angles. Dialling in joint angles by hand instead left the hips permanently
+     17-24 cm behind the boot -- a genuine backseat fault -- because the slope
+     compensation swung the whole leg forward with nothing balancing it. */
+  const sinA = Math.sin(SLOPE_ANGLE), cosA = Math.cos(SLOPE_ANGLE);
+  let outsideShinDir = 0;                        // rig-frame shin angle, captured for the torso
+  function poseLeg(leg, drop, isInside, sideSign, kneeK){
+    /* Target ankle position relative to the hip.
+       `perpStack` picks what "standing up" means:
+         0 = hip stacked WORLD-VERTICALLY over the ankle
+         1 = hip stacked PERPENDICULAR to the snow, hipFore ahead along the ski
+       This was hard-wired to 0, and that is the backseat. Hang a plumb line
+       from the hip on a 17 deg slope and it lands drop*sin(17) = 19 cm UPHILL
+       of the foot; measured, the hip sat 3-16 cm behind the ankle and never once
+       got in front of it. Standing perpendicular to the ski instead of to the
+       horizon is the whole "shins on the tongue" instruction, and it is the
+       first thing that gets lost as a slope steepens. */
+    const w  = P.perpStack;
+    /* outsidePush: the OUTSIDE foot drives forward as the turn loads. The leg
+       reaches further ahead of the hip, which is the push a steered wedge is
+       made with, and it is also what actually keeps the tips level when that
+       ski is yawed further than the inside one. Scaled by commit so it swaps
+       sides through the edge change without a step. */
+    const push = isInside ? 0 : P.outsidePush * commit;
+    const e  = -hipFore + push + (leg === legR ? leadZ : -leadZ);   // e < 0 = ankle behind the hip; push/lead bring it forward
+    const zs = (1-w) * (e * cosA + drop * sinA) + w * e;
+    const ys = (1-w) * (e * sinA - drop * cosA) + w * (-drop);
+
+    const a = THIGH_LEN, b = SHIN_LEN;
+    let L = Math.hypot(ys, zs);
+    L = THREE.MathUtils.clamp(L, Math.abs(a-b) + 1e-3, a + b - 1e-3);
+
+    const beta  = Math.atan2(zs, -ys);                                   // target dir, from straight down
+    const gamma = Math.acos(THREE.MathUtils.clamp((a*a + L*L - b*b)/(2*a*L), -1, 1));
+    const thighDir = beta + gamma;                                       // knee breaks FORWARD
+
+    const kneeY = -a * Math.cos(thighDir), kneeZ = a * Math.sin(thighDir);
+    const shinDir = Math.atan2(zs - kneeZ, -(ys - kneeY));
+
+    leg.thigh.rotation.x = -thighDir;
+    leg.shin.rotation.x  = -shinDir + thighDir;   // relative to the thigh
+    leg.ankle.rotation.x =  shinDir;              // keep the ski flat along the slope
+    /* Knee angulation, plus the wedge's hip splay. +rotation.z swings the foot
+       toward +X, so signing it by the leg's own side pushes both feet outward
+       and leaves the knees stacked inside them. */
+    /* lateral = drop*sin(theta), so asin lands the foot exactly -hipShift out */
+    const hipLean = -Math.asin(THREE.MathUtils.clamp(hipShift / drop, -0.9, 0.9));
+    leg.hip.rotation.z   = leanRad * kneeK + sideSign * (aframe + (leg === legL ? splayL : splayR)) + hipLean;
+    leg.skiGroup.rotation.z = (leg === legL ? skiRollL : skiRollR) - hipLean;
+    if(!isInside) outsideShinDir = shinDir;
+  }
+  poseLeg(legR, outsideIsRight ? outsideDrop : insideDrop, !outsideIsRight, -1, kneeR);
+  poseLeg(legL, outsideIsRight ? insideDrop  : outsideDrop, outsideIsRight,  +1, kneeL);
+  const insideLeg  = outsideIsRight ? legL : legR;
+  const outsideLeg = outsideIsRight ? legR : legL;
+
+  /* ---------------- put BOTH skis on the snow ----------------
+     Ground contact is a constraint; leg length is the consequence. This used to
+     drop the body until the lowest corner of EITHER ski touched, which only
+     guarantees that ONE ski is down. Measured, the OUTSIDE ski — the loaded one
+     — was flying 0.1-5.7 cm for essentially the whole turn while the inside ski
+     carried the contact, and the HUD read 外板 87% about a ski that was in the air.
+
+     The cause was that leg length was authored rather than derived. Inclining
+     the pelvis raises the outside hip socket above the inside one — measured at
+     up to 15 cm — but `legSplit` only lengthened the outside leg by 9.2 cm, and
+     scaled that by `commit` on top. The outside leg could not reach, and the
+     shortfall matched the measured gap exactly.
+
+     Both legs are corrected the SAME way. Planting the outside ski with the
+     pelvis and correcting only the inside leg also works, but it puts the two
+     legs on different formulas either side of the edge change: the lengths
+     still met there, yet their slopes did not, leaving a visible corner in the
+     leg-length curve at every transition (second difference 0.36 cm against the
+     0.002 a smooth swing of this amplitude accounts for). Treating both legs
+     identically removes the asymmetry that caused it.
+
+     This runs BEFORE the torso, because the torso stacks on the shin angle and
+     that angle is not final until the legs have found the snow. */
+  const groundY = 0.003 - PATH_LIFT;
+  const legArgs = new Map([[legR, [!outsideIsRight, -1, kneeR]],
+                           [legL, [ outsideIsRight, +1, kneeL]]]);
+  const dropSolved = new Map([[legR, outsideIsRight ? outsideDrop : insideDrop],
+                              [legL, outsideIsRight ? insideDrop  : outsideDrop]]);
+  pelvis.position.y = 0.95;
+  skier.updateMatrixWorld(true);
+  levelSki(legL); levelSki(legR);      // flat along its length BEFORE any height is read
+  pelvis.position.y += groundY - 0.5 * (skiLowY(legL) + skiLowY(legR));
+  skier.updateMatrixWorld(true);
+  /* Iterative because the leg swings as it changes length, so a ski corner does
+     not track `drop` linearly. The gap falls roughly 30x per pass. `drop` is a
+     WORLD-vertical distance while the gap is measured in the slope-aligned
+     frame, hence the 1/cos. */
+  /* Up to 8 passes, but exits as soon as both skis are within 0.3 mm. Default
+     techniques converge in 3-4; the far corner of the teaching sliders (skew
+     and psiMax both maxed, lean pinned at the 55 deg limit) needs 7-8 — at a
+     fixed 4 it was leaving the inside ski 1.4 cm in the air there. The old exit
+     threshold of 0.01 mm was below the solver's own probe noise and never
+     fired, so every frame paid for the full count. */
+  for(let pass = 0; pass < 8; pass++){
+    let worst = 0;
+    for(const leg of [legL, legR]){
+      /* The lift is scaled by `commit` for the same reason `legSplit` is: it is
+         0 at the edge change, so the legs swap roles with the lift already back
+         at zero. Held constant, the ski about to become the outside ski
+         teleported 3 cm down at the swap. You set one ski down before you pick
+         the other one up. */
+      const lift = leg === insideLeg ? P.insideLift * commit : 0;
+      const gap  = skiLowY(leg) - groundY - lift;
+      worst = Math.max(worst, Math.abs(gap));
+      dropSolved.set(leg, dropSolved.get(leg) + gap / Math.cos(SLOPE_ANGLE));
+      poseLeg(leg, dropSolved.get(leg), ...legArgs.get(leg));
+      /* poseLeg re-dials ankle.rotation.x from the shin angle, which undoes the
+         levelling — so it has to be redone every pass, not once at the end. */
+      levelSki(leg);
+    }
+    if(worst < 3e-4) break;
+  }
+
+  /* ---------------- level the two TIPS fore-and-aft (wedge) ----------------
+     Two things stagger the tips in a wedge: a ski yawed by theta about the
+     boot pulls its tip back by TIP*(1 - cos theta) along the line of travel
+     (the steered outside ski more than the inside one), and the contact solve
+     leaves the two legs different lengths, so the ankles themselves sit a few
+     cm apart fore-and-aft. An analytic fix for the first still left 3.8 cm from
+     the second. Measured instead: read both tips after everything is solved and
+     slide each ski along its OWN axis to the mean. The ski is already flat
+     along its length, so a slide along it does not change any corner height
+     and contact is untouched. Faded by wFrac so a stem christie's parallel
+     finish keeps its inside-ski lead; zero for the parallel techniques, whose
+     lead is deliberate. */
+  const alignTips = P.wedge > 0 ? wFrac * P.alignTips : 0;
+  if(alignTips > 0){
+    const TIP_Z = SKI_MOUNT_OFFSET + SKI_LEN/2;
+    _v6.set(0,0,TIP_Z); legL.skiGroup.localToWorld(_v6); skier.worldToLocal(_v6);
+    _v7.set(0,0,TIP_Z); legR.skiGroup.localToWorld(_v7); skier.worldToLocal(_v7);
+    const mean = 0.5 * (_v6.z + _v7.z);
+    /* Slide along the ski's ACTUAL long axis, expressed in the ankle's frame.
+       position.z alone is the ankle's z, and the ankle frame carries the leg's
+       roll — levelSki flattens the ski's axis, not that frame — so a slide
+       along ankle-z lifted an edged ski's corner 0.7 cm off the snow. */
+    const slide = (leg, tipZ) => {
+      _v8.set(0,0,1).transformDirection(leg.skiGroup.matrixWorld);          // ski axis, world
+      _v9.copy(_v8).applyQuaternion(_q2.copy(skier.quaternion).invert());   // in skier frame
+      const d = alignTips * (mean - tipZ) / Math.max(0.5, _v9.z);          // metres along the axis
+      _v9.copy(_v8).applyQuaternion(_q3.copy(leg.ankle.getWorldQuaternion(_q4)).invert()); // into ankle frame
+      leg.skiGroup.position.addScaledVector(_v9, d);
+    };
+    slide(legL, _v6.z);
+    slide(legR, _v7.z);
+    skier.updateMatrixWorld(true);
+  }
+
+  /* ---------------- upper body pitch ----------------
+     Stack the torso roughly parallel to the shin, which is what a balanced
+     ski stance actually looks like. Measured against gravity the shin leans
+     28-67 deg down the hill while a fixed torso pitch sat at only ~10 deg, so
+     the figure read as standing bolt upright. Tracking the shin keeps the two
+     in line automatically as the leg extends and compresses.
+     Gravity lean of the shin  = SLOPE_ANGLE - shinDir
+     Gravity lean of the torso = spineHinge.rotation.x + SLOPE_ANGLE          */
+  const shinLeanGravity  = SLOPE_ANGLE - outsideShinDir;
+  /* Raised back up once perpStack stopped jamming the knee forward. At 0.46 the
+     torso sat 46 deg away from the shin — shins driving hard, chest standing
+     upright, the classic un-stacked look. Shin and torso are meant to work as a
+     pair, so the two parameters were retuned together rather than one alone;
+     the gap is now 12-16 deg. */
+  const torsoLeanGravity = shinLeanGravity * P.torsoTrack + deg(foreAft);
+  /* (pitch is applied just below, then the separation is closed) */
+  spineHinge.rotation.x  = torsoLeanGravity - SLOPE_ANGLE;
+
+  /* ---------------- separation, closed by measurement ----------------
+     The spine yaws INSIDE the pelvis's inclination, so rotating by spineYaw
+     about a Y axis that is itself tipped up to 40 deg does not deliver spineYaw
+     of world heading. Asking for a smooth 0-48 deg of separation actually
+     produced anything between 2 and 44 depending on where in the turn it was
+     sampled — the chest went square to the skis at exactly the wrong moments.
+     Rather than model the coupling, measure the chest and close the error.
+
+     This has to run AFTER the pitch above. Under a rolled parent the forward
+     pitch DOES move world heading, so correcting the yaw first and pitching
+     afterwards simply threw the correction away — which drove separation to
+     -21 deg where +42 was asked for. Two passes land it; the relationship is
+     smooth and near-linear over a few degrees. Heading is read as atan2(x,-z),
+     the same convention the path uses to define psi. */
+  /* Capped at 38 deg. A thoracic+lumbar spine gives roughly 35-45 deg of axial
+     rotation on the pelvis in total, and the solver was previously allowed 62 —
+     it used 51, which is why the figure looked wrung out rather than skiing.
+     Whatever separation the cap refuses simply does not happen; the chest then
+     sits slightly squarer than asked, which is the honest human answer. */
+  /* bodyFollowSteer: in a wedge the chest and head face where the V points —
+     the bisector of the two tips, which the femurs have steered into the turn
+     — rather than countering against it.
+     SIGN: steerYaw is a rotation.y (positive = tip to the skier's LEFT), but
+     the chest target is a world heading like psi, where positive is the
+     skier's RIGHT (the path integrates x += sin(psi)). They are opposite, and
+     adding without the flip sent the chest 18 deg the wrong way. */
+  const bodyFollow = -steerYaw * P.bodyFollowSteer;
+  solveYaw(spineTwist, chest, psiLag - counterTotal + bodyFollow, deg(38));
+
+  /* ---------------- gaze (視線) ----------------
+     Aimed as a whole orientation, not as Euler angles.
+
+     This used to be two dialled angles — cancel the torso's pitch at the neck,
+     then solve a yaw. Both numbers were large (up to 47 deg of extension and 57
+     of yaw) and the neck sits under a parent that is already pitched AND
+     rolled, so Ry*Rx composed into roll that nobody asked for: the head came
+     out banked +/-40 deg while the chest was only at +/-13. The head was rolled
+     THREE TIMES more than the body it sits on, chin up at +23 deg elevation —
+     looking at the sky, ear on the shoulder.
+
+     A head has three things it must do, and all three are world-referenced, so
+     build the world orientation and convert it to a local rotation in one step.
+     No Euler ordering, no iteration, no cross-coupling:
+       1. look where the turn is going, but only as far as a neck actually turns
+       2. look slightly DOWN the hill, because the snow falls away ahead
+       3. keep the eyes near level with the horizon                            */
+  _v6.set(0,0,1).transformDirection(chest.matrixWorld);       // chest forward
+  _v7.set(0,1,0).transformDirection(chest.matrixWorld);       // chest up
+  const chestHdg = Math.atan2(_v6.x, -_v6.z);
+  /* Toward the fall line, but capped RELATIVE TO THE CHEST. The old target was
+     an absolute world heading, so when the chest countered away the neck had to
+     make up the whole difference and sat pinned at 47 deg every single turn.
+     Whatever the cap refuses simply does not happen — you look as far round as
+     a neck goes and no further. */
+  const gazeHdg = chestHdg + THREE.MathUtils.clamp(
+                    _wrapPi(psi * (1 - P.gazeHold) + bodyFollow - chestHdg),
+                    -deg(P.neckYawMax), deg(P.neckYawMax));
+  const gazeEl  = deg(P.gazeDown);
+  _v8.set(Math.sin(gazeHdg) * Math.cos(gazeEl),
+          Math.sin(gazeEl),
+          -Math.cos(gazeHdg) * Math.cos(gazeEl)).normalize();
+  /* Up axis: level with the horizon, then allowed to fall back toward the
+     chest's own up. Fully level reads robotic — a real head does carry a little
+     of the shoulders' bank — so headLevel is the fraction taken out. */
+  _v9.copy(WORLD_UP).lerp(_v7, 1 - P.headLevel).normalize();
+  _v5.crossVectors(_v9, _v8).normalize();      // right = up x forward
+  _v9.crossVectors(_v8, _v5).normalize();      // re-square the up against it
+  _m2.makeBasis(_v5, _v9, _v8);
+  _q3.setFromRotationMatrix(_m2);              // desired orientation, in world
+  shoulderGirdle.getWorldQuaternion(_q4).invert();
+  neck.quaternion.copy(_q4).multiply(_q3);     // local = parent^-1 * world
+  skier.updateMatrixWorld(true);
+
+  /* ---------------- arms & poles ----------------
+     Hands stay forward and out to the sides, and the INSIDE hand reaches a
+     little further forward. The reach is blended with (1 +/- bank)/2 rather
+     than switched on a branch, so the two hands trade the lead smoothly
+     through the transition instead of snapping. */
+  const armFwd = deg(28), elbowBend = deg(62), reach = deg(9);
+  /* handTilt: outside hand LOW, inside hand HIGH. The outside arm drops in
+     toward the hip (less forward raise, less abduction) and the inside arm
+     lifts and opens, so the hand line — and with it the shoulder line — comes
+     level with the hips instead of dipping toward the outside ski. bank>0 is
+     a right turn, whose outside arm is the LEFT. */
+  const ht = deg(P.handTilt) * bank;
+  /* Pole plant: the planting hand comes forward SLOWLY over the whole turn
+     (swingL/R, a sinusoid in turn phase) and is furthest forward at the plant;
+     the elbow opens as it arrives. The other hand opens a little outward for
+     balance. Nothing here moves the shoulder girdle — the reach is all arm,
+     so the plant does not twist the torso. The bank-based 'inside hand leads'
+     reach is kept only where there is no plant (wedge). */
+  const swing = deg(P.plantSwing), open = deg(P.handOpen);
+  const reachK = 1 - P.polePlant;
+  armR.shoulder.rotation.x = -armFwd - reach * reachK * (1 + bank) * 0.5 - ht - swing * swingR;
+  armL.shoulder.rotation.x = -armFwd - reach * reachK * (1 - bank) * 0.5 + ht - swing * swingL;
+  const fwdL = THREE.MathUtils.clamp(swingL, 0, 1), fwdR = THREE.MathUtils.clamp(swingR, 0, 1);
+  const wide = deg(P.handWide);
+  armL.shoulder.rotation.z =  wide - ht * 0.6 + open * fwdR;   // left opens while the right swings forward
+  armR.shoulder.rotation.z = -wide - ht * 0.6 - open * fwdL;
+  armL.elbow.rotation.x = -elbowBend * (1 - 0.45 * fwdL);
+  armR.elbow.rotation.x = -elbowBend * (1 - 0.45 * fwdR);
+
+  /* (the skis were put on the snow with the legs, before the torso — see above) */
+
+  /* Hang each pole so the tip trails down and back toward the snow. Aimed by
+     quaternion, not Euler angles — the arm chain above is rotated on three
+     axes, so a plain rotation.x would splay the poles out sideways. */
+  P_poleBack = deg(P.poleBack);
+  aimPole(armL.pole, +1, plantL, aziL);
+  aimPole(armR.pole, -1, plantR, aziR);
+
+  /* ---------------- COG marker + stacking line ---------------- */
+  /* Whole-body centre of mass, not the pelvis. Trunk + head + arms are about
+     68% of body mass and sit at mid-chest; legs are the rest and sit near the
+     pelvis. Reading the pelvis alone was blind to the one move a wedge turn is
+     built on — leaning the UPPER BODY over the outside ski — and reported 59%
+     for a figure whose shoulders were clearly across. */
+  _v6.set(0, TORSO_LEN * 0.5, 0); chest.localToWorld(_v6);   // mid-chest, world
+  pelvis.getWorldPosition(_v1);
+  _v1.multiplyScalar(0.32).addScaledVector(_v6, 0.68);
+  const cogWorld = _v1.clone();
+  const cogLocal = skier.worldToLocal(_v1);
+  cogMarker.position.copy(cogLocal);
+  outsideLeg.skiGroup.getWorldPosition(_v2);
+  const skiLocal = skier.worldToLocal(_v2);
+  const lp = cogLine.geometry.attributes.position;
+  lp.setXYZ(0, cogLocal.x, cogLocal.y, cogLocal.z);
+  lp.setXYZ(1, skiLocal.x, skiLocal.y, skiLocal.z);
+  lp.needsUpdate = true;
+
+  /* ---------------- real weight split between the skis ----------------
+     Where does the resultant force actually land? The body's up axis after
+     inclination is (-sin(lean), cos(lean)), so the resultant runs the other
+     way, and from the centre of mass at height h it meets the snow at
+         xp = xCom + h*tan(lean)
+     The lever rule between the two ski contact points then gives the share.
+
+     The HUD used to plot `commit`, which is a function of turn PHASE only — it
+     said "fully on the outside ski" at the fall line no matter where the mass
+     actually was. This is measured from the posed rig instead, so if the inside
+     ski is still carrying load the gauge now says so. */
+  legL.skiGroup.getWorldPosition(_v4); const xSkiL = skier.worldToLocal(_v4).x;
+  legR.skiGroup.getWorldPosition(_v5); const xSkiR = skier.worldToLocal(_v5).x;
+  const xLand   = cogLocal.x + cogLocal.y * Math.tan(leanRad);
+  const xOut    = outsideIsRight ? xSkiR : xSkiL;
+  const xIn     = outsideIsRight ? xSkiL : xSkiR;
+  const spread  = xOut - xIn;
+  /* A lever between two contact points only exists if BOTH skis are touching.
+     When the inside ski is in the air the whole load is on the outside ski by
+     definition, so read the actual clearance rather than trusting the lever —
+     this is the same mistake as before in miniature: a number computed from a
+     model that no longer describes the pose. */
+  const insideAirborne = skiLowY(insideLeg) - groundY > 0.004;
+  const loadOut = insideAirborne ? 1
+                : Math.abs(spread) < 1e-4 ? 0.5
+                : THREE.MathUtils.clamp((xLand - xIn) / spread, 0, 1);
+  poseInfo.loadOut = loadOut;
+  poseInfo.outsideIsRight = outsideIsRight;
+
+  /* ---------------- HUD ---------------- */
+  setGauge('gaugeForeAft',   -foreAftN);             // left = fore, right = aft
+  setGauge('gaugeUpDown',    2 * pressure - 1);      // left = extended/released, right = flexed/loaded
+  setGauge('gaugeLeftRight', 2 * loadOut - 1);       // right = weight on the outside ski
+
+  document.getElementById('turnSideLabel').textContent =
+    bank > 0 ? '右轉 (Right Turn)' : '左轉 (Left Turn)';
+  const tag = document.getElementById('outsideSkiTag');
+  tag.textContent = outsideIsRight ? '右雪板 Right Ski' : '左雪板 Left Ski';
+  tag.className = 'sideTag ' + (outsideIsRight ? 'outside-red' : 'outside-green');
+  document.getElementById('loadReadout').textContent =
+    '外板 ' + Math.round(loadOut*100) + '% / 內板 ' + Math.round((1-loadOut)*100) + '%';
+
+  return cogWorld;
+}
+
+/* normVal in -1..1 : fills right of centre when positive, left when negative */
+function setGauge(id, normVal){
+  const v = THREE.MathUtils.clamp(normVal, -1, 1);
+  const el = document.getElementById(id);
+  const width = Math.abs(v) * 50;
+  el.style.left = v >= 0 ? '50%' : (50 - width) + '%';
+  el.style.width = width + '%';
+}
+
+let lastTrailUpdate = 0;
+function pushTrail(worldPos){
+  const now = performance.now();
+  if(now - lastTrailUpdate < 60) return;
+  lastTrailUpdate = now;
+  const dot = trailDots[trailPtr];
+  dot.position.copy(worldPos);
+  dot.material.opacity = 0.85;
+  trailPtr = (trailPtr+1) % trailMax;
+}
+
+/* ============================================================
+   MAIN LOOP
+============================================================ */
+const clock = new THREE.Clock();
+let progress = 0; // 0..1 along the path, loops
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  /* A slider moved. Rebuilding the LINE is free (~0 ms) so it happens live, but
+     re-cutting the grooves costs ~240 ms — doing that per frame pinned the
+     slider at about 4 fps. The grooves are therefore deferred until the drag
+     ends, which is also the only moment anyone looks at them. */
+  if(shapeDirty){
+    shapeDirty = false;
+    pathLenCache = null;
+    rebuildPath();
+  }
+  if(tracksDirty){
+    tracksDirty = false;
+    rebuildCarvedTracks();
+  }
+
+  if(playing){
+    /* Advance at the same speed the pose is built from, so the skier visibly
+       accelerates through the fall line and slows as the turn closes.
+       This read cos(u)^2 directly, which is the UNSHAPED curvature — once
+       linkSharp and turnSkew existed the travel speed was being taken from a
+       different turn than the one being drawn. Same function as the pose now. */
+    const u = 2*Math.PI * (progress * pathHorizLen) / cycleLen();
+    const b = curvShape(u, _P.linkSharp, _P.turnSkew);
+    progress += (skierSpeed(b*b) * speed * dt) / pathLength();
+    if(progress>1){ progress -= 1; }
+    document.getElementById('timeline').value = Math.round(progress*1000);
+  }
+
+  const cogWorld = updateSkierPose(progress);
+  updateTrackReveal(progress);
+  pushTrail(cogWorld);
+  trailDots.forEach(d=>{ if(d.material.opacity>0) d.material.opacity = Math.max(0,d.material.opacity-0.008); });
+
+  const skierQuat = skier.quaternion.clone();
+  const skierPos = skier.position.clone();
+  updateCamera(skierPos, skierQuat, dt);
+
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+/* Carving the tracks means posing the rig along the whole run, so it has to
+   run after every const the pose function touches is initialised. */
+rebuildCarvedTracks();
+// prime once so first frame isn't at t=0 default pose
+updateSkierPose(0);
+
+/* ============================================================
+   UI WIRING
+============================================================ */
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove('show'), 1400);
+}
+
+const btnPlay = document.getElementById('btnPlay');
+btnPlay.addEventListener('click', ()=>{
+  playing = !playing;
+  btnPlay.textContent = playing ? '⏸ 暫停' : '▶ 播放';
+});
+
+document.getElementById('timeline').addEventListener('input', (e)=>{
+  playing = false;
+  btnPlay.textContent = '▶ 播放';
+  progress = e.target.value/1000;
+});
+
+document.getElementById('speedSel').addEventListener('change', (e)=>{
+  speed = parseFloat(e.target.value);
+});
+
+/* ---- Technique + drill selection ----
+   Both dropdowns are generated from TECHNIQUES, so a new technique or drill
+   needs nothing here: add it to the registry and it appears. */
+const techSel  = document.getElementById('techSel');
+const drillSel = document.getElementById('drillSel');
+const techNote = document.getElementById('techNote');
+
+for(const key in TECHNIQUES){
+  const o = document.createElement('option');
+  o.value = key; o.textContent = TECHNIQUES[key].label;
+  techSel.appendChild(o);
+}
+
+function fillDrills(){
+  drillSel.innerHTML = '';
+  TECHNIQUES[techKey].drills.forEach((d,i)=>{
+    const o = document.createElement('option');
+    o.value = i; o.textContent = (i===0 ? '● ' : '○ ') + d.name;
+    drillSel.appendChild(o);
+  });
+  drillSel.value = drillIdx;
+}
+
+function list(items){
+  return '<ul>' + items.map(s=>'<li>'+s+'</li>').join('') + '</ul>';
+}
+function renderNote(){
+  const t = TECHNIQUES[techKey], d = t.drills[drillIdx];
+  let html = '<span class="lead">' + t.note + '</span>';
+  if(d.aim)    html += '<span class="cueHead">練習目的</span>' + d.aim;
+  if(d.cues)   html += '<span class="cueHead">動作重點</span>' + list(d.cues);
+  if(d.faults) html += '<span class="cueHead warn">常見錯誤</span>' + list(d.faults);
+  techNote.innerHTML = html;
+  document.getElementById('turnShapeLabel').textContent =
+    t.short + (drillIdx ? ' · ' + d.name.split(' ')[0] : '');
+}
+
+/* Rebuilding the line and re-cutting the grooves is the expensive part, so it
+   happens only on a change, never per frame. */
+function applyTechnique(){
+  buildParams();
+  pathLenCache = null;
+  rebuildPath();
+  rebuildCarvedTracks();
+  renderNote();
+  syncTuners();          // the sliders show the technique, so they follow it
+}
+
+techSel.addEventListener('change', e=>{
+  techKey = e.target.value;
+  drillIdx = 0;
+  fillDrills();
+  applyTechnique();
+  showToast('滑法: ' + TECHNIQUES[techKey].short);
+});
+drillSel.addEventListener('change', e=>{
+  drillIdx = parseInt(e.target.value, 10);
+  applyTechnique();
+  showToast('練習: ' + TECHNIQUES[techKey].drills[drillIdx].name);
+});
+
+techSel.value = techKey;
+fillDrills();
+renderNote();
+
+/* ================= Teaching controls =================
+   The four things a lesson actually talks about, exposed as live sliders so a
+   fault and its fix can be shown on the same figure instead of described.
+
+   Each one reads and writes the merged parameter set directly, so the sliders
+   ARE the current technique rather than a copy of it — switching drill resyncs
+   them, and the reset button is just "rebuild the technique and resync".
+
+   The readout underneath is the point of the panel: it reports the MEASURED
+   consequence, not the slider value. "0.30" means nothing to a student; "彎尾
+   只佔 37% 距離" is the thing you can point at on the snow. */
+const TUNERS = [
+  {key:'turnSkew', label:'過落山線後主動收彎', min:0, max:0.55, step:0.01,
+   hint:'細 = 入彎出彎一樣力,彎型圓但拖。大 = 落山線之後先發力,彎尾收得快。'},
+  {key:'psiMax', label:'彎收得幾埋', min:30, max:88, step:1, unit:'°',
+   hint:'大 = 彎尾橫住山坡,控速強但會橫渡。細 = 少橫渡,順但收唔到速。'},
+  {key:'counter', label:'上身頂住落山線', min:0, max:0.5, step:0.01,
+   hint:'0 = 上身完全跟板。大 = 上身頂住落山線唔跟,換刃嗰陣膊頭已經對住下一個彎(帶住身體轉)。'},
+  {key:'chestLag', label:'膊頭跟板嘅延遲', min:0, max:0.6, step:0.01,
+   hint:'膊頭跟住身體方向轉,但遲少少。0 = 同板一齊轉。大 = 落山線之後上下身分離先最明顯。'},
+  {key:'linkSharp', label:'換刃果斷程度', min:0, max:6, step:0.1,
+   hint:'細 = 兩個彎之間浮吓先換刃。大 = 一到位就換,冇中間嗰浸。'}
+];
+const tuneList = document.getElementById('tuneList');
+const tuneOut  = document.getElementById('tuneOut');
+const _tuneEls = {};
+for(const t of TUNERS){
+  const wrap = document.createElement('div');
+  wrap.className = 'tune';
+  wrap.innerHTML =
+    '<div class="tuneTop"><span>' + t.label + '</span><span class="tuneVal"></span></div>' +
+    '<input type="range" min="' + t.min + '" max="' + t.max + '" step="' + t.step + '">' +
+    '<div class="tuneHint">' + t.hint + '</div>';
+  tuneList.appendChild(wrap);
+  const input = wrap.querySelector('input');
+  const val   = wrap.querySelector('.tuneVal');
+  _tuneEls[t.key] = {input, val, def:t};
+  input.addEventListener('input', ()=>{
+    _P[t.key] = parseFloat(input.value);
+    buildPsiTable(_P.linkSharp, _P.turnSkew);
+    syncTuners();
+    shapeDirty = true;          // cheap: re-integrate the line, once per frame
+  });
+  /* Fires when the drag ends, so the expensive groove rebuild happens once. */
+  input.addEventListener('change', ()=>{ tracksDirty = true; });
+}
+function syncTuners(){
+  for(const t of TUNERS){
+    const e = _tuneEls[t.key];
+    if(document.activeElement !== e.input) e.input.value = _P[t.key];
+    const v = _P[t.key];
+    e.val.textContent = (t.step >= 1 ? Math.round(v) : v.toFixed(2)) + (t.unit || '');
+  }
+  renderTuneOut();
+}
+/* Measured consequences of the current settings. Sampled off the shape
+   functions only — no posing — so this is cheap enough to run on every slider
+   move. Time-weighted by speed, because what a student sees is time. */
+function renderTuneOut(){
+  const N = 720;
+  let tAll = 0, tTrav = 0, fallAt = null, peakAt = 0, peak = 0;
+  for(let i = 0; i <= N; i++){
+    const p = -1 + 2*i/N, u = p*Math.PI/2;
+    const ps = psiShape(u, _P.turnSkew);
+    const cv = curvShape(u, _P.linkSharp, _P.turnSkew);
+    if(fallAt === null && ps >= 0) fallAt = p;
+    if(Math.abs(cv) > peak){ peak = Math.abs(cv); peakAt = p; }
+    const dt = 1/Math.sqrt(0.7 + 0.6*cv*cv);
+    tAll += dt;
+    if(Math.abs(ps)*_P.psiMax > 55) tTrav += dt;
+  }
+  const tail = fallAt === null ? 50 : (1 - fallAt)/2*100;
+  let sep = 0;
+  for(let i = 0; i <= N; i++){
+    const u = (-1 + 2*i/N)*Math.PI/2;
+    const ski   = psiShape(u, _P.turnSkew);
+    const chest = psiShape(u - _P.chestLag*Math.PI/2, _P.turnSkew) - ski*_P.counter;
+    sep = Math.max(sep, Math.abs(chest - ski) * _P.psiMax);
+  }
+  tuneOut.innerHTML =
+    '<span class="k">彎尾</span> 過咗落山線之後佔 <b>' + tail.toFixed(0) + '%</b> 距離' +
+      ' <span style="opacity:.6">(50% = 前後一樣)</span><br>' +
+    '<span class="k">曲率最勁</span> 喺彎嘅 <b>' + (peakAt*50+50).toFixed(0) + '%</b> 位置' +
+      ' <span style="opacity:.6">(50% = 落山線)</span><br>' +
+    '<span class="k">橫渡</span> 板過 55° 嘅時間 <b>' + (tTrav/tAll*100).toFixed(0) + '%</b><br>' +
+    '<span class="k">分離</span> 上身對板最多 <b>' + sep.toFixed(0) + '°</b>' +
+      ' <span style="opacity:.6">(中彎 10-25°)</span>';
+}
+document.getElementById('btnTuneReset').addEventListener('click', ()=>{
+  applyTechnique();
+  showToast('已還原「' + TECHNIQUES[techKey].drills[drillIdx].name + '」嘅設定');
+});
+syncTuners();
+
+/* ---- Collapsible cards ---- */
+document.querySelectorAll('.card > .cardHead').forEach(h=>{
+  h.addEventListener('click', ()=> h.parentElement.classList.toggle('collapsed'));
+});
+
+/* ---- Upload & Compare ---- */
+const fileInput = document.getElementById('fileInput');
+const studentVideo = document.getElementById('studentVideo');
+const overlayVideo = document.getElementById('overlayVideo');
+const comparePanel = document.getElementById('comparePanel');
+
+document.getElementById('btnUpload').addEventListener('click', ()=> fileInput.click());
+document.getElementById('btnCompareToggle').addEventListener('click', ()=>{
+  comparePanel.classList.toggle('show');
+});
+fileInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const url = URL.createObjectURL(file);
+  studentVideo.src = url;
+  overlayVideo.src = url;
+  comparePanel.classList.add('show');
+  showToast('已上載學員影片: ' + file.name);
+});
+
+let overlayOn = false;
+document.getElementById('btnOverlay').addEventListener('click', (e)=>{
+  overlayOn = !overlayOn;
+  e.target.textContent = '疊加模式: ' + (overlayOn?'開':'關');
+  overlayVideo.style.opacity = overlayOn ? document.getElementById('overlayOpacity').value/100 : 0;
+  if(overlayOn) overlayVideo.play().catch(()=>{});
+});
+document.getElementById('overlayOpacity').addEventListener('input', (e)=>{
+  if(overlayOn) overlayVideo.style.opacity = e.target.value/100;
+});
+let mirrorOn = false;
+document.getElementById('btnMirror').addEventListener('click', (e)=>{
+  mirrorOn = !mirrorOn;
+  e.target.textContent = '鏡像: ' + (mirrorOn?'開':'關');
+  overlayVideo.style.transform = mirrorOn ? 'scaleX(-1)' : 'scaleX(1)';
+  studentVideo.style.transform = mirrorOn ? 'scaleX(-1)' : 'scaleX(1)';
+});
+document.getElementById('btnSyncPlay').addEventListener('click', ()=>{
+  playing = true;
+  btnPlay.textContent = '⏸ 暫停';
+  progress = 0;
+  studentVideo.currentTime = 0;
+  studentVideo.play().catch(()=>{});
+  if(overlayOn){ overlayVideo.currentTime = 0; overlayVideo.play().catch(()=>{}); }
+  showToast('同步播放開始');
+});
+
+showToast('左邊可揀滑法同練習 · 任何視角都可以拖曳調整');
+})();
+</script>
+</body>
+</html>
